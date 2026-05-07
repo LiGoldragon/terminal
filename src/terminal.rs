@@ -10,6 +10,7 @@ use crate::error::{Error, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WezTermMux {
     program: PathBuf,
+    socket: Option<PathBuf>,
 }
 
 impl WezTermMux {
@@ -17,7 +18,8 @@ impl WezTermMux {
         let program = std::env::var_os("PERSONA_WEZTERM")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("wezterm"));
-        Self { program }
+        let socket = std::env::var_os("WEZTERM_UNIX_SOCKET").map(PathBuf::from);
+        Self { program, socket }
     }
 
     pub fn pane(&self, pane_id: u32) -> TerminalPane {
@@ -27,9 +29,19 @@ impl WezTermMux {
         }
     }
 
+    pub fn with_socket(&self, socket: impl Into<PathBuf>) -> Self {
+        Self {
+            program: self.program.clone(),
+            socket: Some(socket.into()),
+        }
+    }
+
     fn command(&self) -> Command {
         let mut command = Command::new(&self.program);
         command.args(["cli", "--prefer-mux"]);
+        if let Some(socket) = &self.socket {
+            command.env("WEZTERM_UNIX_SOCKET", socket);
+        }
         command
     }
 }
