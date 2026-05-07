@@ -409,6 +409,21 @@ pub struct SendRequest {
     text: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtySocket {
+    path: PathBuf,
+}
+
+impl PtySocket {
+    pub fn from_path(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn send_prompt(&self, text: &str) -> Result<()> {
+        SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).send()
+    }
+}
+
 impl SendRequest {
     pub fn from_environment() -> Self {
         let mut arguments = env::args_os().skip(1);
@@ -424,6 +439,22 @@ impl SendRequest {
     }
 
     pub fn run(self) -> Result<()> {
+        SocketInput::new(self.socket, self.text).send()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SocketInput {
+    socket: PathBuf,
+    text: Vec<u8>,
+}
+
+impl SocketInput {
+    fn new(socket: PathBuf, text: Vec<u8>) -> Self {
+        Self { socket, text }
+    }
+
+    fn send(self) -> Result<()> {
         let mut stream = UnixStream::connect(&self.socket)?;
         stream.set_nonblocking(true)?;
         if !self.text.is_empty() {
