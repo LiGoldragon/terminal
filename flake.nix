@@ -77,6 +77,14 @@
             type = "app";
             program = "${package}/bin/persona-wezterm-send";
           };
+          capture = {
+            type = "app";
+            program = "${package}/bin/persona-wezterm-capture";
+          };
+          type = {
+            type = "app";
+            program = "${package}/bin/persona-wezterm-type";
+          };
         }
       );
 

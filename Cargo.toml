@@ -23,11 +23,20 @@ path = "src/bin/persona-wezterm-view.rs"
 name = "persona-wezterm-send"
 path = "src/bin/persona-wezterm-send.rs"
 
+[[bin]]
+name = "persona-wezterm-capture"
+path = "src/bin/persona-wezterm-capture.rs"
+
+[[bin]]
+name = "persona-wezterm-type"
+path = "src/bin/persona-wezterm-type.rs"
+
 [dependencies]
 crossterm    = "0.28"
 portable-pty = "0.8"
 ractor       = "0.13"
 thiserror    = "2"
+vt100        = "0.16"
 
 [lints.rust]
 unused = "warn"

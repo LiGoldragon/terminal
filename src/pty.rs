@@ -410,6 +410,17 @@ pub struct SendRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeRequest {
+    socket: PathBuf,
+    text: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureRequest {
+    socket: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PtySocket {
     path: PathBuf,
 }
@@ -421,6 +432,14 @@ impl PtySocket {
 
     pub fn send_prompt(&self, text: &str) -> Result<()> {
         SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).send()
+    }
+
+    pub fn send_text(&self, text: &str) -> Result<()> {
+        SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).type_text()
+    }
+
+    pub fn capture(&self) -> Result<PtySnapshot> {
+        SocketCapture::new(self.path.clone()).capture()
     }
 }
 
@@ -440,6 +459,177 @@ impl SendRequest {
 
     pub fn run(self) -> Result<()> {
         SocketInput::new(self.socket, self.text).send()
+    }
+}
+
+impl TypeRequest {
+    pub fn from_environment() -> Self {
+        let mut arguments = env::args_os().skip(1);
+        let socket = arguments
+            .next()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
+        let text = arguments
+            .next()
+            .map(|value| value.to_string_lossy().into_owned().into_bytes())
+            .unwrap_or_default();
+        Self { socket, text }
+    }
+
+    pub fn run(self) -> Result<()> {
+        SocketInput::new(self.socket, self.text).type_text()
+    }
+}
+
+impl CaptureRequest {
+    pub fn from_environment() -> Self {
+        let socket = env::args_os()
+            .nth(1)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
+        Self { socket }
+    }
+
+    pub fn run(self, mut output: impl Write) -> Result<()> {
+        let snapshot = SocketCapture::new(self.socket).capture()?;
+        match CapturePresentation::from_environment() {
+            CapturePresentation::Raw => output.write_all(snapshot.as_bytes())?,
+            CapturePresentation::Screen { rows, columns } => {
+                output.write_all(snapshot.visible_text(rows, columns).as_bytes())?;
+            }
+        }
+        output.flush()?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CapturePresentation {
+    Raw,
+    Screen { rows: u16, columns: u16 },
+}
+
+impl CapturePresentation {
+    fn from_environment() -> Self {
+        if !matches!(
+            env::var("PERSONA_WEZTERM_CAPTURE_MODE").as_deref(),
+            Ok("screen")
+        ) {
+            return Self::Raw;
+        }
+        let rows = env::var("PERSONA_WEZTERM_CAPTURE_ROWS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(32);
+        let columns = env::var("PERSONA_WEZTERM_CAPTURE_COLUMNS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(120);
+        Self::Screen { rows, columns }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtySnapshot {
+    bytes: Vec<u8>,
+}
+
+impl PtySnapshot {
+    fn from_bytes(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.bytes.as_slice()
+    }
+
+    pub fn to_string_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+
+    pub fn visible_text(&self, rows: u16, columns: u16) -> String {
+        self.screen(rows, columns).visible_text
+    }
+
+    pub fn screen(&self, rows: u16, columns: u16) -> PtyScreenSnapshot {
+        let mut parser = vt100::Parser::new(rows, columns, 0);
+        parser.process(&self.bytes);
+        let screen = parser.screen();
+        let (cursor_row, cursor_column) = screen.cursor_position();
+        let lines = screen.rows(0, columns).collect::<Vec<_>>();
+        let cursor_line = lines.get(cursor_row as usize).cloned().unwrap_or_default();
+        PtyScreenSnapshot {
+            visible_text: screen.contents(),
+            cursor_row,
+            cursor_column,
+            cursor_line,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PtyScreenSnapshot {
+    visible_text: String,
+    cursor_row: u16,
+    cursor_column: u16,
+    cursor_line: String,
+}
+
+impl PtyScreenSnapshot {
+    pub fn visible_text(&self) -> &str {
+        self.visible_text.as_str()
+    }
+
+    pub fn cursor_row(&self) -> u16 {
+        self.cursor_row
+    }
+
+    pub fn cursor_column(&self) -> u16 {
+        self.cursor_column
+    }
+
+    pub fn cursor_line(&self) -> &str {
+        self.cursor_line.as_str()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SocketCapture {
+    socket: PathBuf,
+}
+
+impl SocketCapture {
+    fn new(socket: PathBuf) -> Self {
+        Self { socket }
+    }
+
+    fn capture(self) -> Result<PtySnapshot> {
+        let mut stream = UnixStream::connect(&self.socket)?;
+        ViewerHandshake {
+            enabled: true,
+            replay: true,
+        }
+        .write_to(&mut stream)?;
+        stream.set_read_timeout(Some(Duration::from_millis(80)))?;
+        let deadline = std::time::Instant::now() + Duration::from_millis(800);
+        let mut bytes = Vec::new();
+        let mut buffer = [0_u8; 8192];
+        while std::time::Instant::now() < deadline {
+            match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => bytes.extend_from_slice(&buffer[..count]),
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) =>
+                {
+                    break;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(PtySnapshot::from_bytes(bytes))
     }
 }
 
@@ -473,6 +663,15 @@ impl SocketInput {
                 }
                 Err(error) => return Err(error.into()),
             }
+        }
+        Ok(())
+    }
+
+    fn type_text(self) -> Result<()> {
+        let mut stream = UnixStream::connect(&self.socket)?;
+        if !self.text.is_empty() {
+            SendFrame::input(&self.text).write_to(&mut stream)?;
+            thread::sleep(Duration::from_millis(100));
         }
         Ok(())
     }
