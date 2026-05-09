@@ -646,24 +646,14 @@ impl SocketInput {
 
     fn send(self) -> Result<()> {
         let mut stream = UnixStream::connect(&self.socket)?;
-        stream.set_nonblocking(true)?;
         if !self.text.is_empty() {
             SendFrame::input(&self.text).write_to(&mut stream)?;
-            thread::sleep(Duration::from_millis(100));
+            stream.flush()?;
+            thread::sleep(Duration::from_millis(3000));
         }
         SendFrame::input(b"\r").write_to(&mut stream)?;
-        let deadline = std::time::Instant::now() + Duration::from_millis(500);
-        let mut buffer = [0_u8; 8192];
-        while std::time::Instant::now() < deadline {
-            match stream.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(20));
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
+        stream.flush()?;
+        thread::sleep(Duration::from_millis(1000));
         Ok(())
     }
 
@@ -671,7 +661,8 @@ impl SocketInput {
         let mut stream = UnixStream::connect(&self.socket)?;
         if !self.text.is_empty() {
             SendFrame::input(&self.text).write_to(&mut stream)?;
-            thread::sleep(Duration::from_millis(100));
+            stream.flush()?;
+            thread::sleep(Duration::from_millis(1000));
         }
         Ok(())
     }
@@ -738,7 +729,7 @@ impl ClientHandshake {
                 })
             }
             Ok(()) => Ok(Self {
-                replay: true,
+                replay: false,
                 first_tag: Some(tag[0]),
             }),
             Err(error)
