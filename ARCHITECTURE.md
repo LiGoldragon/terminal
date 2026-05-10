@@ -76,3 +76,4 @@ src/bin/persona-wezterm-send.rs    raw input sender
 - `../persona-harness/ARCHITECTURE.md`
 - `../persona-message/ARCHITECTURE.md`
 - `../persona-router/ARCHITECTURE.md`
+- `reports/1-terminal-backend-survey.md`
