@@ -439,6 +439,16 @@ impl PtySocket {
         SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).type_text()
     }
 
+    pub fn send_bytes(&self, bytes: &[u8]) -> Result<()> {
+        let mut stream = UnixStream::connect(&self.path)?;
+        SendFrame::input(bytes).write_to(&mut stream)
+    }
+
+    pub fn resize(&self, rows: u16, columns: u16) -> Result<()> {
+        let mut stream = UnixStream::connect(&self.path)?;
+        SendFrame::resize(rows, columns).write_to(&mut stream)
+    }
+
     pub fn capture(&self) -> Result<PtySnapshot> {
         SocketCapture::new(self.path.clone()).capture()
     }

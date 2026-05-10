@@ -4,7 +4,8 @@
 
 `persona-wezterm` owns terminal byte transport. It keeps harness child
 processes alive in durable PTYs, lets visible WezTerm viewers attach and detach,
-and moves raw input/resize/output frames between clients and the PTY.
+and moves raw input/resize/output frames between clients and the PTY. Its
+Persona-facing boundary is the typed `signal-persona-terminal` contract.
 
 ---
 
@@ -31,6 +32,7 @@ flowchart LR
 - output scrollback replay;
 - resize propagation;
 - WezTerm mux/socket attachment helpers.
+- `signal-persona-terminal` request/event adapter.
 
 ## 2 · State and Ownership
 
@@ -45,6 +47,7 @@ This repo owns:
 - WezTerm viewer attachment;
 - raw input and resize frames;
 - output scrollback replay.
+- terminal transport request/event adaptation.
 
 This repo does not own:
 
@@ -66,6 +69,7 @@ This repo does not own:
 ```text
 src/pty.rs                         PTY daemon model
 src/terminal.rs                    terminal frame records
+src/contract.rs                    signal-persona-terminal adapter
 src/bin/persona-wezterm-daemon.rs  daemon entry
 src/bin/persona-wezterm-view.rs    viewer entry
 src/bin/persona-wezterm-send.rs    raw input sender
