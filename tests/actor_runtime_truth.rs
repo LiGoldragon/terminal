@@ -56,7 +56,7 @@ impl SourceTree {
 }
 
 #[test]
-fn terminal_delivery_actor_cannot_use_non_kameo_runtime() {
+fn terminal_delivery_cannot_use_non_kameo_runtime() {
     let forbidden_fragments = [
         "ractor =",
         "name = \"ractor\"",
@@ -86,14 +86,14 @@ fn terminal_delivery_actor_cannot_use_non_kameo_runtime() {
 }
 
 #[test]
-fn terminal_delivery_actor_cannot_be_empty_marker() {
+fn terminal_delivery_cannot_be_empty_marker() {
     let terminal_source = SourceFile::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("terminal.rs"),
     );
 
-    assert!(terminal_source.contains("pub struct TerminalDeliveryActor {"));
+    assert!(terminal_source.contains("pub struct TerminalDelivery {"));
     assert!(terminal_source.contains("backend: WezTermMux,"));
     assert!(terminal_source.contains("delivered_prompt_count: u64,"));
 }

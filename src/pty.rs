@@ -67,7 +67,7 @@ impl PtySession {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(PtyError::into_io_error)?;
+            .map_err(|error| PtyIoContext::for_operation("open pty").into_io_error(error))?;
         let mut builder = CommandBuilder::new(&command[0]);
         for argument in command.iter().skip(1) {
             builder.arg(argument);
@@ -80,7 +80,7 @@ impl PtySession {
         let child = pair
             .slave
             .spawn_command(builder)
-            .map_err(PtyError::into_io_error)?;
+            .map_err(|error| PtyIoContext::for_operation("spawn child").into_io_error(error))?;
         if let Some(pid) = child.process_id() {
             eprintln!("persona-wezterm-daemon child_pid={pid}");
         }
@@ -88,10 +88,9 @@ impl PtySession {
 
         let clients = Clients::default();
         let scrollback = Scrollback::default();
-        let reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(PtyError::into_io_error)?;
+        let reader = pair.master.try_clone_reader().map_err(|error| {
+            PtyIoContext::for_operation("clone pty reader").into_io_error(error)
+        })?;
         clients.clone().broadcast_from(reader, scrollback.clone());
 
         Ok(Self {
@@ -108,7 +107,9 @@ impl PtySession {
                 .lock()
                 .expect("pty master lock")
                 .take_writer()
-                .map_err(PtyError::into_io_error)?,
+                .map_err(|error| {
+                    PtyIoContext::for_operation("take pty writer").into_io_error(error)
+                })?,
         ));
         for stream in listener.incoming() {
             let mut stream = stream?;
@@ -817,10 +818,17 @@ impl<'bytes> SendFrame<'bytes> {
     }
 }
 
-struct PtyError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PtyIoContext {
+    operation: &'static str,
+}
 
-impl PtyError {
-    fn into_io_error(error: impl std::fmt::Display) -> std::io::Error {
-        std::io::Error::other(error.to_string())
+impl PtyIoContext {
+    fn for_operation(operation: &'static str) -> Self {
+        Self { operation }
+    }
+
+    fn into_io_error(self, error: impl std::fmt::Display) -> std::io::Error {
+        std::io::Error::other(format!("{}: {}", self.operation, error))
     }
 }

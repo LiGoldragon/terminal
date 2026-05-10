@@ -119,7 +119,7 @@ impl DeliveryReceipt {
     }
 }
 
-pub struct TerminalDeliveryActor {
+pub struct TerminalDelivery {
     backend: WezTermMux,
     delivered_prompt_count: u64,
 }
@@ -129,7 +129,7 @@ pub struct DeliverTerminalPrompt {
     pub prompt: TerminalPrompt,
 }
 
-impl Actor for TerminalDeliveryActor {
+impl Actor for TerminalDelivery {
     type Args = WezTermMux;
     type Error = Infallible;
 
@@ -144,7 +144,7 @@ impl Actor for TerminalDeliveryActor {
     }
 }
 
-impl Message<DeliverTerminalPrompt> for TerminalDeliveryActor {
+impl Message<DeliverTerminalPrompt> for TerminalDelivery {
     type Reply = Result<DeliveryReceipt>;
 
     async fn handle(
