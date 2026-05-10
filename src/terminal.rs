@@ -3,7 +3,9 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
+use kameo::actor::{Actor, ActorRef};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
 
 use crate::error::{Error, Result};
 
@@ -117,46 +119,41 @@ impl DeliveryReceipt {
     }
 }
 
-pub struct TerminalDeliveryActor;
-
-pub enum TerminalDeliveryMessage {
-    Deliver {
-        pane_id: u32,
-        prompt: TerminalPrompt,
-        reply: RpcReplyPort<Result<DeliveryReceipt>>,
-    },
+pub struct TerminalDeliveryActor {
+    backend: WezTermMux,
+    delivered_prompt_count: u64,
 }
 
-#[ractor::async_trait]
-impl Actor for TerminalDeliveryActor {
-    type Msg = TerminalDeliveryMessage;
-    type State = WezTermMux;
-    type Arguments = WezTermMux;
+pub struct DeliverTerminalPrompt {
+    pub pane_id: u32,
+    pub prompt: TerminalPrompt,
+}
 
-    async fn pre_start(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        arguments: Self::Arguments,
-    ) -> std::result::Result<Self::State, ActorProcessingErr> {
-        Ok(arguments)
+impl Actor for TerminalDeliveryActor {
+    type Args = WezTermMux;
+    type Error = Infallible;
+
+    async fn on_start(
+        backend: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
+        Ok(Self {
+            backend,
+            delivered_prompt_count: 0,
+        })
     }
+}
+
+impl Message<DeliverTerminalPrompt> for TerminalDeliveryActor {
+    type Reply = Result<DeliveryReceipt>;
 
     async fn handle(
-        &self,
-        _myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
-        state: &mut Self::State,
-    ) -> std::result::Result<(), ActorProcessingErr> {
-        match message {
-            TerminalDeliveryMessage::Deliver {
-                pane_id,
-                prompt,
-                reply,
-            } => {
-                let _ = reply.send(state.pane(pane_id).deliver(&prompt));
-            }
-        }
-        Ok(())
+        &mut self,
+        message: DeliverTerminalPrompt,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.delivered_prompt_count += 1;
+        self.backend.pane(message.pane_id).deliver(&message.prompt)
     }
 }
 
