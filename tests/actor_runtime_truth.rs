@@ -40,6 +40,7 @@ impl SourceTree {
             self.root.join("Cargo.toml"),
             self.root.join("Cargo.lock"),
             self.root.join("src").join("terminal.rs"),
+            self.root.join("src").join("pty.rs"),
         ];
         files.extend(self.test_files());
         files.into_iter().map(SourceFile::read).collect()
@@ -86,14 +87,27 @@ fn terminal_delivery_cannot_use_non_kameo_runtime() {
 }
 
 #[test]
-fn terminal_delivery_cannot_be_empty_marker() {
+fn terminal_delivery_actor_is_shelved_not_reimplemented() {
     let terminal_source = SourceFile::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("terminal.rs"),
     );
 
-    assert!(terminal_source.contains("pub struct TerminalDelivery {"));
-    assert!(terminal_source.contains("backend: WezTermMux,"));
-    assert!(terminal_source.contains("delivered_prompt_count: u64,"));
+    assert!(!terminal_source.contains("TerminalDelivery"));
+    assert!(!terminal_source.contains("DeliverTerminalPrompt"));
+}
+
+#[test]
+fn persona_terminal_uses_terminal_cell_as_the_pty_cell_primitive() {
+    let manifest = SourceFile::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
+    let pty_source = SourceFile::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("pty.rs"),
+    );
+
+    assert!(manifest.contains("terminal-cell"));
+    assert!(pty_source.contains("TerminalCell::spawn_session"));
+    assert!(pty_source.contains("TerminalCellSocketClient"));
 }

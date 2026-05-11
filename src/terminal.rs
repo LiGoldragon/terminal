@@ -3,10 +3,6 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-use kameo::actor::{Actor, ActorRef};
-use kameo::error::Infallible;
-use kameo::message::{Context, Message};
-
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,15 +13,15 @@ pub struct WezTermMux {
 
 impl WezTermMux {
     pub fn from_environment() -> Self {
-        let program = std::env::var_os("PERSONA_WEZTERM")
+        let program = std::env::var_os("PERSONA_TERMINAL_WEZTERM")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("wezterm"));
         let socket = std::env::var_os("WEZTERM_UNIX_SOCKET").map(PathBuf::from);
         Self { program, socket }
     }
 
-    pub fn pane(&self, pane_id: u32) -> TerminalPane {
-        TerminalPane {
+    pub fn pane(&self, pane_id: u32) -> WezTermPane {
+        WezTermPane {
             backend: self.clone(),
             pane_id,
         }
@@ -49,12 +45,12 @@ impl WezTermMux {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalPane {
+pub struct WezTermPane {
     backend: WezTermMux,
     pane_id: u32,
 }
 
-impl TerminalPane {
+impl WezTermPane {
     pub fn deliver(&self, prompt: &TerminalPrompt) -> Result<DeliveryReceipt> {
         self.send_text(prompt.as_str())?;
         thread::sleep(Duration::from_millis(500));
@@ -116,44 +112,6 @@ pub struct DeliveryReceipt {
 impl DeliveryReceipt {
     pub fn pane_id(&self) -> u32 {
         self.pane_id
-    }
-}
-
-pub struct TerminalDelivery {
-    backend: WezTermMux,
-    delivered_prompt_count: u64,
-}
-
-pub struct DeliverTerminalPrompt {
-    pub pane_id: u32,
-    pub prompt: TerminalPrompt,
-}
-
-impl Actor for TerminalDelivery {
-    type Args = WezTermMux;
-    type Error = Infallible;
-
-    async fn on_start(
-        backend: Self::Args,
-        _actor_reference: ActorRef<Self>,
-    ) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
-            backend,
-            delivered_prompt_count: 0,
-        })
-    }
-}
-
-impl Message<DeliverTerminalPrompt> for TerminalDelivery {
-    type Reply = Result<DeliveryReceipt>;
-
-    async fn handle(
-        &mut self,
-        message: DeliverTerminalPrompt,
-        _context: &mut Context<Self, Self::Reply>,
-    ) -> Self::Reply {
-        self.delivered_prompt_count += 1;
-        self.backend.pane(message.pane_id).deliver(&message.prompt)
     }
 }
 

@@ -1,20 +1,22 @@
-# Agent Instructions - Persona WezTerm
+# Agent Instructions - Persona Terminal
 
 You MUST read lore's `AGENTS.md` and the primary workspace
 orchestration protocol before editing this repository.
 
 ## Repo Role
 
-Persona WezTerm owns the terminal-harness control layer for Persona. It
-contains the library and binaries that spawn durable PTYs, attach visible
-WezTerm viewers, send input frames, resize harnesses, and keep terminal output
-available for later capture.
+Persona Terminal owns the terminal-harness control layer for Persona. It
+contains the library and binaries that spawn durable terminal cells, attach
+visible viewers, send input frames, resize harnesses, and keep terminal output
+available for later capture. `terminal-cell` is the low-level PTY/transcript
+primitive; this repo is the Persona-facing owner around it.
 
 ## Boundaries
 
-This repo owns terminal transport and presentation. It does not own Persona
-message records, authorization, agent identity, or the Persona state reducer.
-Those layers depend on this crate when they need terminal delivery.
+This repo owns terminal transport, viewer attachment, and terminal session
+metadata. It does not own Persona message records, authorization, agent
+identity, harness quota interpretation, or the Persona state reducer. WezTerm
+code is adapter/shelved code only; it is not the owner noun or required runtime.
 
 ## Version Control
 

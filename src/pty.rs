@@ -1,405 +1,641 @@
-use std::collections::VecDeque;
 use std::env;
 use std::fs;
-use std::io::{Read, Write, stdin, stdout};
+use std::io::{self, Read, Write};
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
 
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{execute, queue};
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size as terminal_size};
+use kameo::actor::ActorRef;
+use signal_hook::consts::signal::SIGWINCH;
+use signal_hook::iterator::Signals;
+use terminal_cell::{
+    InputSource, SocketReplyWriter, SocketRequest, SocketRequestReader, TerminalCell,
+    TerminalCellError, TerminalCellSocketClient, TerminalCommand, TerminalInput,
+    TerminalInputGateLease, TerminalInputPort, TerminalLaunch, TerminalOutputPort, TerminalSize,
+    TerminalViewerLease, TerminalWorkerKind, TerminalWorkerLifecycle,
+    TerminalWorkerObservationRequest, TerminalWorkerStop, TranscriptSnapshotRequest,
+    TranscriptSubscriptionRequest, WaitForTerminalExit, WaitForTranscriptText,
+};
+use tokio::runtime::{Builder, Handle};
 
-use crate::error::Result;
+use crate::error::{Error, Result};
+
+const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonRequest {
     socket: PathBuf,
-    command: Vec<String>,
+    command: TerminalCommand,
 }
 
 impl DaemonRequest {
     pub fn from_environment() -> Self {
         let mut arguments = env::args().skip(1);
-        let socket = arguments
-            .next()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
-        let command = arguments.collect::<Vec<_>>();
-        let command = if command.is_empty() {
-            vec![env::var("SHELL").unwrap_or_else(|_| "bash".to_string())]
-        } else {
-            command
+        let first = arguments.next();
+
+        let (socket, command) = match first.as_deref() {
+            Some("--socket") => {
+                let socket = arguments
+                    .next()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(default_socket);
+                let command = match arguments.next().as_deref() {
+                    Some("--") => Self::command_from(arguments.collect()),
+                    Some(program) => {
+                        let mut rest = vec![program.to_string()];
+                        rest.extend(arguments);
+                        Self::command_from(rest)
+                    }
+                    None => default_command(),
+                };
+                (socket, command)
+            }
+            Some(socket) => {
+                let command = Self::command_from(arguments.collect());
+                (PathBuf::from(socket), command)
+            }
+            None => (default_socket(), default_command()),
         };
+
         Self { socket, command }
     }
 
     pub fn run(self) -> Result<()> {
-        if let Some(parent) = self.socket.parent() {
+        let runtime = Builder::new_multi_thread().enable_all().build()?;
+        runtime.block_on(
+            TerminalCellDaemon::new(
+                self.socket,
+                TerminalLaunch::new(self.command, TerminalSize::new(24, 80)),
+            )
+            .run(),
+        )
+    }
+
+    fn command_from(command: Vec<String>) -> TerminalCommand {
+        let mut command = command.into_iter();
+        match command.next() {
+            Some(program) => TerminalCommand::new(program, command.collect::<Vec<_>>()),
+            None => default_command(),
+        }
+    }
+}
+
+struct TerminalCellDaemon {
+    socket: PathBuf,
+    launch: TerminalLaunch,
+}
+
+impl TerminalCellDaemon {
+    fn new(socket: PathBuf, launch: TerminalLaunch) -> Self {
+        Self { socket, launch }
+    }
+
+    async fn run(self) -> Result<()> {
+        let session = TerminalCell::spawn_session(self.launch);
+        let terminal = session.actor();
+        let input_port = session.input_port();
+        let output_port = session.output_port();
+        terminal
+            .wait_for_startup_result()
+            .await
+            .map_err(|error| Error::TerminalCell {
+                detail: format!("terminal cell startup failed: {error}"),
+            })?;
+
+        TerminalSocketFile::new(self.socket.as_path()).prepare()?;
+        let listener = UnixListener::bind(&self.socket)?;
+        let runtime = Handle::current();
+
+        println!("persona-terminal-daemon socket={}", self.socket.display());
+        io::stdout().flush()?;
+
+        tokio::task::spawn_blocking(move || {
+            TerminalCellDaemonLoop::new(listener, terminal, input_port, output_port, runtime).run()
+        })
+        .await
+        .map_err(|error| Error::TerminalCell {
+            detail: format!("terminal daemon task failed: {error}"),
+        })??;
+        Ok(())
+    }
+}
+
+struct TerminalSocketFile<'path> {
+    path: &'path Path,
+}
+
+impl<'path> TerminalSocketFile<'path> {
+    fn new(path: &'path Path) -> Self {
+        Self { path }
+    }
+
+    fn prepare(&self) -> io::Result<()> {
+        if let Some(parent) = self.path.parent()
+            && !parent.as_os_str().is_empty()
+        {
             fs::create_dir_all(parent)?;
         }
-        let _ = fs::remove_file(&self.socket);
-        let listener = UnixListener::bind(&self.socket)?;
-        let session = PtySession::spawn(self.command)?;
-        eprintln!("persona-wezterm-daemon socket={}", self.socket.display());
-        session.accept_clients(listener)
+
+        match fs::symlink_metadata(self.path) {
+            Ok(metadata) if metadata.file_type().is_socket() => fs::remove_file(self.path),
+            Ok(_) => Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "refusing to replace non-socket path {}",
+                    self.path.display()
+                ),
+            )),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 }
 
-struct PtySession {
-    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    _child: Box<dyn Child + Send + Sync>,
-    clients: Clients,
-    scrollback: Scrollback,
+struct TerminalCellDaemonLoop {
+    listener: UnixListener,
+    terminal: ActorRef<TerminalCell>,
+    input_port: TerminalInputPort,
+    output_port: TerminalOutputPort,
+    runtime: Handle,
 }
 
-impl PtySession {
-    fn spawn(command: Vec<String>) -> Result<Self> {
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
-                rows: 32,
-                cols: 120,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|error| PtyIoContext::for_operation("open pty").into_io_error(error))?;
-        let mut builder = CommandBuilder::new(&command[0]);
-        for argument in command.iter().skip(1) {
-            builder.arg(argument);
+impl TerminalCellDaemonLoop {
+    fn new(
+        listener: UnixListener,
+        terminal: ActorRef<TerminalCell>,
+        input_port: TerminalInputPort,
+        output_port: TerminalOutputPort,
+        runtime: Handle,
+    ) -> Self {
+        Self {
+            listener,
+            terminal,
+            input_port,
+            output_port,
+            runtime,
         }
-        builder.env("TERM", "xterm-256color");
-        builder.env("COLORTERM", "truecolor");
-        builder.env("CLICOLOR", "1");
-        builder.env("FORCE_COLOR", "1");
-        builder.env_remove("NO_COLOR");
-        let child = pair
-            .slave
-            .spawn_command(builder)
-            .map_err(|error| PtyIoContext::for_operation("spawn child").into_io_error(error))?;
-        if let Some(pid) = child.process_id() {
-            eprintln!("persona-wezterm-daemon child_pid={pid}");
-        }
-        drop(pair.slave);
-
-        let clients = Clients::default();
-        let scrollback = Scrollback::default();
-        let reader = pair.master.try_clone_reader().map_err(|error| {
-            PtyIoContext::for_operation("clone pty reader").into_io_error(error)
-        })?;
-        clients.clone().broadcast_from(reader, scrollback.clone());
-
-        Ok(Self {
-            master: Arc::new(Mutex::new(pair.master)),
-            _child: child,
-            clients,
-            scrollback,
-        })
     }
 
-    fn accept_clients(self, listener: UnixListener) -> Result<()> {
-        let writer = Arc::new(Mutex::new(
-            self.master
-                .lock()
-                .expect("pty master lock")
-                .take_writer()
-                .map_err(|error| {
-                    PtyIoContext::for_operation("take pty writer").into_io_error(error)
-                })?,
-        ));
-        for stream in listener.incoming() {
-            let mut stream = stream?;
-            let handshake = ClientHandshake::read_from(&mut stream)?;
-            if handshake.replay_scrollback() && self.scrollback.write_to(&stream).is_err() {
-                continue;
-            }
-            let Ok(client_stream) = stream.try_clone() else {
-                continue;
+    fn run(self) -> io::Result<()> {
+        let _ = self
+            .terminal
+            .tell(TerminalWorkerLifecycle::Started(
+                TerminalWorkerKind::SocketAcceptLoop,
+            ))
+            .try_send();
+
+        for incoming in self.listener.incoming() {
+            let stream = match incoming {
+                Ok(stream) => stream,
+                Err(error) => {
+                    let _ = self
+                        .terminal
+                        .tell(TerminalWorkerLifecycle::Stopped {
+                            worker: TerminalWorkerKind::SocketAcceptLoop,
+                            reason: TerminalWorkerStop::SocketAcceptFailed(error.to_string()),
+                        })
+                        .try_send();
+                    return Err(error);
+                }
             };
-            self.clients.add(client_stream);
-            ClientInput {
-                stream,
-                first_tag: handshake.into_first_tag(),
-                writer: writer.clone(),
-                master: self.master.clone(),
-            }
-            .spawn();
+            let terminal = self.terminal.clone();
+            let input_port = self.input_port.clone();
+            let output_port = self.output_port.clone();
+            let runtime = self.runtime.clone();
+            thread::Builder::new()
+                .name("persona-terminal-connection".to_string())
+                .spawn(move || {
+                    if let Err(error) = TerminalCellConnection::new(
+                        stream,
+                        terminal,
+                        input_port,
+                        output_port,
+                        runtime,
+                    )
+                    .run()
+                    {
+                        eprintln!("persona terminal connection failed: {error}");
+                    }
+                })?;
         }
         Ok(())
     }
 }
 
-#[derive(Clone, Default)]
-struct Clients {
-    inner: Arc<Mutex<Vec<UnixStream>>>,
-}
-
-impl Clients {
-    fn add(&self, stream: UnixStream) {
-        self.inner.lock().expect("clients lock").push(stream);
-    }
-
-    fn broadcast_from(&self, mut reader: Box<dyn Read + Send>, scrollback: Scrollback) {
-        let clients = self.clone();
-        thread::spawn(move || {
-            let mut buffer = [0_u8; 8192];
-            loop {
-                let Ok(count) = reader.read(&mut buffer) else {
-                    break;
-                };
-                if count == 0 {
-                    break;
-                }
-                let bytes = &buffer[..count];
-                scrollback.push(bytes);
-                clients.write_all(bytes);
-            }
-        });
-    }
-
-    fn write_all(&self, bytes: &[u8]) {
-        self.inner
-            .lock()
-            .expect("clients lock")
-            .retain_mut(|stream| stream.write_all(bytes).is_ok() && stream.flush().is_ok());
-    }
-}
-
-#[derive(Clone)]
-struct Scrollback {
-    bytes: Arc<Mutex<VecDeque<u8>>>,
-    limit: usize,
-}
-
-impl Default for Scrollback {
-    fn default() -> Self {
-        Self {
-            bytes: Arc::new(Mutex::new(VecDeque::new())),
-            limit: 8 * 1024 * 1024,
-        }
-    }
-}
-
-impl Scrollback {
-    fn push(&self, incoming: &[u8]) {
-        let mut bytes = self.bytes.lock().expect("scrollback lock");
-        bytes.extend(incoming.iter().copied());
-        while bytes.len() > self.limit {
-            bytes.pop_front();
-        }
-    }
-
-    fn write_to(&self, mut stream: &UnixStream) -> std::io::Result<()> {
-        let bytes = self.bytes.lock().expect("scrollback lock");
-        let contiguous = bytes.iter().copied().collect::<Vec<_>>();
-        stream.write_all(&contiguous)?;
-        stream.flush()
-    }
-}
-
-struct ClientInput {
+struct TerminalCellConnection {
     stream: UnixStream,
-    first_tag: Option<u8>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    terminal: ActorRef<TerminalCell>,
+    input_port: TerminalInputPort,
+    output_port: TerminalOutputPort,
+    runtime: Handle,
 }
 
-impl ClientInput {
-    fn spawn(mut self) {
-        thread::spawn(move || {
-            while let Ok(frame) = self.read_frame() {
-                match frame {
-                    ClientFrame::Input(bytes) => {
-                        let mut writer = self.writer.lock().expect("pty writer lock");
-                        let _ = writer.write_all(&bytes);
-                        let _ = writer.flush();
-                    }
-                    ClientFrame::Resize(size) => {
-                        eprintln!(
-                            "persona-wezterm-daemon resize rows={} cols={}",
-                            size.rows, size.cols
-                        );
-                        let _ = self.master.lock().expect("pty master lock").resize(size);
-                    }
-                }
-            }
-        });
+impl TerminalCellConnection {
+    fn new(
+        stream: UnixStream,
+        terminal: ActorRef<TerminalCell>,
+        input_port: TerminalInputPort,
+        output_port: TerminalOutputPort,
+        runtime: Handle,
+    ) -> Self {
+        Self {
+            stream,
+            terminal,
+            input_port,
+            output_port,
+            runtime,
+        }
     }
 
-    fn read_frame(&mut self) -> std::io::Result<ClientFrame> {
-        match self.first_tag.take() {
-            Some(tag) => ClientFrame::read_from_tag(tag, &mut self.stream),
-            None => ClientFrame::read_from(&mut self.stream),
+    fn run(&mut self) -> io::Result<()> {
+        let request = SocketRequestReader::new(&mut self.stream).read_request()?;
+        match request {
+            SocketRequest::Capture => self.write_snapshot(),
+            SocketRequest::SubscribeFromBeginning => self.stream_subscription(),
+            SocketRequest::Attach => self.attach_viewer(),
+            SocketRequest::Input(input) => self.write_input(input),
+            SocketRequest::CloseHumanInput => self.close_human_input(),
+            SocketRequest::OpenHumanInput(lease) => self.open_human_input(lease),
+            SocketRequest::Resize(size) => self.write_resize(size),
+            SocketRequest::Wait(wait) => self.wait_for_text(wait),
+            SocketRequest::WaitExit => self.wait_for_exit(),
+            SocketRequest::WorkerObservation => self.write_worker_observation(),
         }
+    }
+
+    fn write_snapshot(&mut self) -> io::Result<()> {
+        let snapshot = self.snapshot()?;
+        SocketReplyWriter::new(&mut self.stream).write_snapshot(snapshot.bytes())
+    }
+
+    fn stream_subscription(&mut self) -> io::Result<()> {
+        let mut subscription = self.subscription()?;
+        self.stream.write_all(&subscription.replay_bytes())?;
+        self.stream.flush()?;
+        while let Some(delta) = subscription.blocking_next_live_delta() {
+            if self.stream.write_all(delta.bytes()).is_err() {
+                break;
+            }
+            if self.stream.flush().is_err() {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn attach_viewer(&mut self) -> io::Result<()> {
+        let lease = match self.output_port.reserve_viewer() {
+            Ok(lease) => lease,
+            Err(TerminalCellError::ViewerAlreadyAttached) => {
+                SocketReplyWriter::new(&mut self.stream)
+                    .write_attach_rejected("terminal cell already has an attached viewer")?;
+                return Ok(());
+            }
+            Err(error) => return Err(Self::terminal_error(error)),
+        };
+
+        let result = self.complete_viewer_attach(lease);
+        if result.is_err() {
+            let _ = self.output_port.detach(lease);
+        }
+        result
+    }
+
+    fn complete_viewer_attach(&mut self, lease: TerminalViewerLease) -> io::Result<()> {
+        SocketReplyWriter::new(&mut self.stream).write_attach_accepted()?;
+
+        let snapshot = self.snapshot()?;
+        if !snapshot.bytes().is_empty() {
+            self.stream.write_all(snapshot.bytes())?;
+            self.stream.flush()?;
+        }
+
+        self.output_port
+            .activate_viewer(lease, self.stream.try_clone()?)
+            .map_err(Self::terminal_error)?;
+
+        self.record_worker_started(TerminalWorkerKind::AttachConnectionPump);
+        let result = self.pump_viewer_input();
+        let reason = match &result {
+            Ok(()) => TerminalWorkerStop::AttachConnectionClosed,
+            Err(error) => TerminalWorkerStop::AttachConnectionFailed(error.to_string()),
+        };
+        self.record_worker_stopped(TerminalWorkerKind::AttachConnectionPump, reason);
+        let _ = self.output_port.detach(lease);
+        result
+    }
+
+    fn pump_viewer_input(&mut self) -> io::Result<()> {
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let count = self.stream.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            self.input_port
+                .accept(TerminalInput::new(
+                    buffer[..count].to_vec(),
+                    InputSource::Viewer,
+                ))
+                .map_err(Self::terminal_error)?;
+        }
+        Ok(())
+    }
+
+    fn write_input(&mut self, input: TerminalInput) -> io::Result<()> {
+        let _acceptance = self
+            .input_port
+            .accept(input)
+            .map_err(Self::terminal_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_acceptance()
+    }
+
+    fn close_human_input(&mut self) -> io::Result<()> {
+        let lease = self
+            .input_port
+            .close_human_input()
+            .map_err(Self::terminal_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_gate_lease(lease)
+    }
+
+    fn open_human_input(&mut self, lease: TerminalInputGateLease) -> io::Result<()> {
+        let release = self
+            .input_port
+            .open_human_input(lease)
+            .map_err(Self::terminal_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_gate_release(release)
+    }
+
+    fn write_resize(&mut self, size: TerminalSize) -> io::Result<()> {
+        self.runtime
+            .block_on(async { self.terminal.ask(size).await })
+            .map_err(Self::actor_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_acceptance()
+    }
+
+    fn wait_for_text(&mut self, wait: WaitForTranscriptText) -> io::Result<()> {
+        let matched = self
+            .runtime
+            .block_on(async { self.terminal.ask(wait).await })
+            .map_err(Self::actor_error)?;
+        if matched {
+            SocketReplyWriter::new(&mut self.stream).write_wait_satisfied()
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "terminal transcript waiter ended without a match",
+            ))
+        }
+    }
+
+    fn snapshot(&self) -> io::Result<terminal_cell::TranscriptSnapshot> {
+        self.runtime
+            .block_on(async { self.terminal.ask(TranscriptSnapshotRequest).await })
+            .map_err(Self::actor_error)
+    }
+
+    fn wait_for_exit(&mut self) -> io::Result<()> {
+        let exit = self
+            .runtime
+            .block_on(async { self.terminal.ask(WaitForTerminalExit).await })
+            .map_err(Self::actor_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_exit_status(exit.status())
+    }
+
+    fn write_worker_observation(&mut self) -> io::Result<()> {
+        let observation = self
+            .runtime
+            .block_on(async { self.terminal.ask(TerminalWorkerObservationRequest).await })
+            .map_err(Self::actor_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_snapshot(observation.to_text().as_bytes())
+    }
+
+    fn subscription(&self) -> io::Result<terminal_cell::TranscriptSubscription> {
+        self.runtime
+            .block_on(async {
+                self.terminal
+                    .ask(TranscriptSubscriptionRequest::from_beginning())
+                    .await
+            })
+            .map_err(Self::actor_error)
+    }
+
+    fn record_worker_started(&self, worker: TerminalWorkerKind) {
+        let _ = self
+            .terminal
+            .tell(TerminalWorkerLifecycle::Started(worker))
+            .try_send();
+    }
+
+    fn record_worker_stopped(&self, worker: TerminalWorkerKind, reason: TerminalWorkerStop) {
+        let _ = self
+            .terminal
+            .tell(TerminalWorkerLifecycle::Stopped { worker, reason })
+            .try_send();
+    }
+
+    fn actor_error(error: impl std::fmt::Display) -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())
+    }
+
+    fn terminal_error(error: TerminalCellError) -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewerRequest {
     socket: PathBuf,
-    presentation: ViewerPresentation,
+    mode: ViewMode,
+    ready_file: Option<PathBuf>,
 }
 
 impl ViewerRequest {
     pub fn from_environment() -> Self {
-        let socket = env::args()
-            .nth(1)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
-        let presentation = ViewerPresentation::from_environment();
+        let mut arguments = env::args().skip(1);
+        let mut socket = None;
+        let mut mode = ViewMode::Interactive;
+        let mut ready_file = None;
+
+        while let Some(argument) = arguments.next() {
+            match argument.as_str() {
+                "--socket" => socket = arguments.next().map(PathBuf::from),
+                "--once" => mode = ViewMode::Snapshot,
+                "--ready-file" => ready_file = arguments.next().map(PathBuf::from),
+                path if socket.is_none() => socket = Some(PathBuf::from(path)),
+                _ => {}
+            }
+        }
+
         Self {
-            socket,
-            presentation,
+            socket: socket.unwrap_or_else(default_socket),
+            mode,
+            ready_file,
         }
     }
 
     pub fn run(self) -> Result<()> {
-        let mut stream = UnixStream::connect(&self.socket)?;
-        ViewerHandshake::from_environment().write_to(&mut stream)?;
-        let reader = stream.try_clone()?;
-        TerminalSession::new(stream, reader, self.presentation).run()
+        TerminalViewer::new(self.socket, self.mode, self.ready_file).run()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViewerPresentation {
-    Scrollback,
-    Application,
+enum ViewMode {
+    Interactive,
+    Snapshot,
 }
 
-impl ViewerPresentation {
-    fn from_environment() -> Self {
-        match env::var("PERSONA_WEZTERM_VIEW_MODE").as_deref() {
-            Ok("application") => Self::Application,
-            _ => Self::Scrollback,
-        }
-    }
+struct TerminalViewer {
+    client: TerminalCellSocketClient,
+    mode: ViewMode,
+    readiness: TerminalViewerReadiness,
 }
 
-struct TerminalSession {
-    writer: Arc<Mutex<UnixStream>>,
-    reader: UnixStream,
-    presentation: ViewerPresentation,
-}
-
-impl TerminalSession {
-    fn new(writer: UnixStream, reader: UnixStream, presentation: ViewerPresentation) -> Self {
+impl TerminalViewer {
+    fn new(socket: PathBuf, mode: ViewMode, ready_file: Option<PathBuf>) -> Self {
         Self {
-            writer: Arc::new(Mutex::new(writer)),
-            reader,
-            presentation,
+            client: TerminalCellSocketClient::new(socket),
+            mode,
+            readiness: TerminalViewerReadiness::new(ready_file),
         }
     }
 
-    fn run(mut self) -> Result<()> {
-        terminal::enable_raw_mode()?;
-        self.presentation.enter()?;
-        if let Ok(title) = env::var("PERSONA_WEZTERM_VIEW_TITLE") {
-            write!(stdout(), "\x1b]0;{title}\x07")?;
-            stdout().flush()?;
+    fn run(&self) -> Result<()> {
+        match self.mode {
+            ViewMode::Interactive => self.attach(),
+            ViewMode::Snapshot => self.print_snapshot(),
         }
-        self.send_resize()?;
-        self.spawn_output_thread();
-        let done = Arc::new(AtomicBool::new(false));
-        self.spawn_input_thread(done.clone());
-        let result = self.forward_resize(done);
-        let _ = self.presentation.leave();
-        let _ = terminal::disable_raw_mode();
-        result
     }
 
-    fn spawn_output_thread(&self) {
-        let mut reader = self.reader.try_clone().expect("viewer reader clones");
-        thread::spawn(move || {
-            let mut out = stdout();
-            let mut buffer = [0_u8; 8192];
-            loop {
-                let Ok(count) = reader.read(&mut buffer) else {
-                    break;
-                };
-                if count == 0 {
-                    break;
-                }
-                let _ = out.write_all(&buffer[..count]);
-                let _ = out.flush();
-            }
-        });
+    fn print_snapshot(&self) -> Result<()> {
+        let bytes = self.client.capture()?;
+        io::stdout().write_all(&bytes)?;
+        Ok(())
     }
 
-    fn spawn_input_thread(&self, done: Arc<AtomicBool>) {
-        let writer = self.writer.clone();
-        thread::spawn(move || {
-            let mut input = stdin();
-            let mut buffer = [0_u8; 4096];
-            loop {
-                let Ok(count) = input.read(&mut buffer) else {
-                    break;
-                };
-                if count == 0 {
-                    break;
+    fn attach(&self) -> Result<()> {
+        let mut resize_watcher = TerminalResizeWatcher::new(self.client.clone());
+        resize_watcher.resize_now()?;
+        let _resize_thread = resize_watcher.spawn()?;
+        let mut attach_stream = self.client.open_attach_stream()?;
+        let mut output_stream = attach_stream.try_clone()?;
+        self.readiness.confirm_control_plane(&self.client)?;
+        self.readiness.announce()?;
+        let output = thread::Builder::new()
+            .name("persona-terminal-view-output".to_string())
+            .spawn(move || -> io::Result<()> {
+                let mut stdout = io::stdout();
+                let mut buffer = [0_u8; 8192];
+                loop {
+                    let count = output_stream.read(&mut buffer)?;
+                    if count == 0 {
+                        break;
+                    }
+                    stdout.write_all(&buffer[..count])?;
+                    stdout.flush()?;
                 }
-                if buffer[..count].contains(&0x1d) {
-                    done.store(true, Ordering::SeqCst);
-                    break;
-                }
-                let mut stream = writer.lock().expect("viewer writer lock");
-                if SendFrame::input(&buffer[..count])
-                    .write_to(&mut *stream)
-                    .is_err()
-                {
-                    break;
-                }
+                Ok(())
+            })?;
+
+        let _raw_mode = TerminalRawMode::enter()?;
+        let mut stdin = io::stdin();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let count = stdin.read(&mut buffer)?;
+            if count == 0 {
+                break;
             }
-        });
+            attach_stream.write_all(&buffer[..count])?;
+        }
+
+        output.join().map_err(|_| Error::TerminalCell {
+            detail: "terminal view output thread panicked".to_string(),
+        })??;
+        Ok(())
+    }
+}
+
+struct TerminalResizeWatcher {
+    client: TerminalCellSocketClient,
+    last_size: Option<TerminalSize>,
+}
+
+impl TerminalResizeWatcher {
+    fn new(client: TerminalCellSocketClient) -> Self {
+        Self {
+            client,
+            last_size: None,
+        }
     }
 
-    fn forward_resize(&mut self, done: Arc<AtomicBool>) -> Result<()> {
-        let mut last = terminal::size()?;
-        while !done.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(250));
-            let size = terminal::size()?;
-            if size != last {
-                self.send_resize_to(size.1, size.0)?;
-                last = size;
-            }
+    fn spawn(mut self) -> io::Result<thread::JoinHandle<()>> {
+        let mut signals = Signals::new([SIGWINCH])?;
+        thread::Builder::new()
+            .name("persona-terminal-view-resize".to_string())
+            .spawn(move || {
+                for _signal in signals.forever() {
+                    if self.resize_now().is_err() {
+                        break;
+                    }
+                }
+            })
+    }
+
+    fn resize_now(&mut self) -> io::Result<()> {
+        let size = self.current_attached_terminal_size()?;
+        if self.last_size == Some(size) {
+            return Ok(());
+        }
+        self.client.resize(size)?;
+        self.last_size = Some(size);
+        Ok(())
+    }
+
+    fn current_attached_terminal_size(&self) -> io::Result<TerminalSize> {
+        let (columns, rows) = terminal_size()?;
+        Ok(TerminalSize::new(rows, columns))
+    }
+}
+
+struct TerminalViewerReadiness {
+    ready_file: Option<PathBuf>,
+}
+
+impl TerminalViewerReadiness {
+    fn new(ready_file: Option<PathBuf>) -> Self {
+        Self { ready_file }
+    }
+
+    fn announce(&self) -> io::Result<()> {
+        if let Some(path) = &self.ready_file {
+            fs::write(path, b"persona-terminal-view attached\n")?;
         }
         Ok(())
     }
 
-    fn send_resize(&mut self) -> Result<()> {
-        let (columns, rows) = terminal::size()?;
-        self.send_resize_to(rows, columns)
-    }
-
-    fn send_resize_to(&mut self, rows: u16, columns: u16) -> Result<()> {
-        let mut writer = self.writer.lock().expect("viewer writer lock");
-        SendFrame::resize(rows, columns).write_to(&mut *writer)
+    fn confirm_control_plane(&self, client: &TerminalCellSocketClient) -> io::Result<()> {
+        client.capture().map(|_snapshot| ())
     }
 }
 
-impl ViewerPresentation {
-    fn enter(self) -> Result<()> {
-        match self {
-            Self::Scrollback => Ok(()),
-            Self::Application => {
-                queue!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
-                stdout().flush()?;
-                Ok(())
-            }
-        }
-    }
+struct TerminalRawMode {
+    enabled: bool,
+}
 
-    fn leave(self) -> Result<()> {
-        match self {
-            Self::Scrollback => Ok(()),
-            Self::Application => {
-                execute!(stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
-                Ok(())
-            }
+impl TerminalRawMode {
+    fn enter() -> io::Result<Self> {
+        enable_raw_mode()?;
+        Ok(Self { enabled: true })
+    }
+}
+
+impl Drop for TerminalRawMode {
+    fn drop(&mut self) {
+        if self.enabled {
+            let _ = disable_raw_mode();
+            self.enabled = false;
         }
     }
 }
@@ -422,73 +658,61 @@ pub struct CaptureRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PtySocket {
-    path: PathBuf,
+pub struct TerminalSocket {
+    client: TerminalCellSocketClient,
 }
 
-impl PtySocket {
+impl TerminalSocket {
     pub fn from_path(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            client: TerminalCellSocketClient::new(path),
+        }
     }
 
     pub fn send_prompt(&self, text: &str) -> Result<()> {
-        SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).send()
+        let mut bytes = text.as_bytes().to_vec();
+        bytes.push(b'\r');
+        self.send_bytes(&bytes)
     }
 
     pub fn send_text(&self, text: &str) -> Result<()> {
-        SocketInput::new(self.path.clone(), text.as_bytes().to_vec()).type_text()
+        self.send_bytes(text.as_bytes())
     }
 
     pub fn send_bytes(&self, bytes: &[u8]) -> Result<()> {
-        let mut stream = UnixStream::connect(&self.path)?;
-        SendFrame::input(bytes).write_to(&mut stream)
+        self.client.send_programmatic_input(bytes)?;
+        Ok(())
     }
 
     pub fn resize(&self, rows: u16, columns: u16) -> Result<()> {
-        let mut stream = UnixStream::connect(&self.path)?;
-        SendFrame::resize(rows, columns).write_to(&mut stream)
+        self.client.resize(TerminalSize::new(rows, columns))?;
+        Ok(())
     }
 
-    pub fn capture(&self) -> Result<PtySnapshot> {
-        SocketCapture::new(self.path.clone()).capture()
+    pub fn capture(&self) -> Result<TerminalSnapshot> {
+        Ok(TerminalSnapshot::from_bytes(self.client.capture()?))
     }
 }
 
 impl SendRequest {
     pub fn from_environment() -> Self {
-        let mut arguments = env::args_os().skip(1);
-        let socket = arguments
-            .next()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
-        let text = arguments
-            .next()
-            .map(|value| value.to_string_lossy().into_owned().into_bytes())
-            .unwrap_or_default();
+        let (socket, text) = socket_and_text_from_environment();
         Self { socket, text }
     }
 
     pub fn run(self) -> Result<()> {
-        SocketInput::new(self.socket, self.text).send()
+        TerminalSocket::from_path(self.socket).send_prompt(&String::from_utf8_lossy(&self.text))
     }
 }
 
 impl TypeRequest {
     pub fn from_environment() -> Self {
-        let mut arguments = env::args_os().skip(1);
-        let socket = arguments
-            .next()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
-        let text = arguments
-            .next()
-            .map(|value| value.to_string_lossy().into_owned().into_bytes())
-            .unwrap_or_default();
+        let (socket, text) = socket_and_text_from_environment();
         Self { socket, text }
     }
 
     pub fn run(self) -> Result<()> {
-        SocketInput::new(self.socket, self.text).type_text()
+        TerminalSocket::from_path(self.socket).send_bytes(&self.text)
     }
 }
 
@@ -497,12 +721,12 @@ impl CaptureRequest {
         let socket = env::args_os()
             .nth(1)
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/tmp/persona-wezterm.sock"));
+            .unwrap_or_else(default_socket);
         Self { socket }
     }
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
-        let snapshot = SocketCapture::new(self.socket).capture()?;
+        let snapshot = TerminalSocket::from_path(self.socket).capture()?;
         match CapturePresentation::from_environment() {
             CapturePresentation::Raw => output.write_all(snapshot.as_bytes())?,
             CapturePresentation::Screen { rows, columns } => {
@@ -523,16 +747,16 @@ enum CapturePresentation {
 impl CapturePresentation {
     fn from_environment() -> Self {
         if !matches!(
-            env::var("PERSONA_WEZTERM_CAPTURE_MODE").as_deref(),
+            env::var("PERSONA_TERMINAL_CAPTURE_MODE").as_deref(),
             Ok("screen")
         ) {
             return Self::Raw;
         }
-        let rows = env::var("PERSONA_WEZTERM_CAPTURE_ROWS")
+        let rows = env::var("PERSONA_TERMINAL_CAPTURE_ROWS")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(32);
-        let columns = env::var("PERSONA_WEZTERM_CAPTURE_COLUMNS")
+        let columns = env::var("PERSONA_TERMINAL_CAPTURE_COLUMNS")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(120);
@@ -541,11 +765,11 @@ impl CapturePresentation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PtySnapshot {
+pub struct TerminalSnapshot {
     bytes: Vec<u8>,
 }
 
-impl PtySnapshot {
+impl TerminalSnapshot {
     fn from_bytes(bytes: Vec<u8>) -> Self {
         Self { bytes }
     }
@@ -562,14 +786,14 @@ impl PtySnapshot {
         self.screen(rows, columns).visible_text
     }
 
-    pub fn screen(&self, rows: u16, columns: u16) -> PtyScreenSnapshot {
+    pub fn screen(&self, rows: u16, columns: u16) -> TerminalScreenSnapshot {
         let mut parser = vt100::Parser::new(rows, columns, 0);
         parser.process(&self.bytes);
         let screen = parser.screen();
         let (cursor_row, cursor_column) = screen.cursor_position();
         let lines = screen.rows(0, columns).collect::<Vec<_>>();
         let cursor_line = lines.get(cursor_row as usize).cloned().unwrap_or_default();
-        PtyScreenSnapshot {
+        TerminalScreenSnapshot {
             visible_text: screen.contents(),
             cursor_row,
             cursor_column,
@@ -579,14 +803,14 @@ impl PtySnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PtyScreenSnapshot {
+pub struct TerminalScreenSnapshot {
     visible_text: String,
     cursor_row: u16,
     cursor_column: u16,
     cursor_line: String,
 }
 
-impl PtyScreenSnapshot {
+impl TerminalScreenSnapshot {
     pub fn visible_text(&self) -> &str {
         self.visible_text.as_str()
     }
@@ -604,241 +828,23 @@ impl PtyScreenSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SocketCapture {
-    socket: PathBuf,
+fn default_socket() -> PathBuf {
+    PathBuf::from(DEFAULT_SOCKET)
 }
 
-impl SocketCapture {
-    fn new(socket: PathBuf) -> Self {
-        Self { socket }
-    }
-
-    fn capture(self) -> Result<PtySnapshot> {
-        let mut stream = UnixStream::connect(&self.socket)?;
-        ViewerHandshake {
-            enabled: true,
-            replay: true,
-        }
-        .write_to(&mut stream)?;
-        stream.set_read_timeout(Some(Duration::from_millis(80)))?;
-        let deadline = std::time::Instant::now() + Duration::from_millis(800);
-        let mut bytes = Vec::new();
-        let mut buffer = [0_u8; 8192];
-        while std::time::Instant::now() < deadline {
-            match stream.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(count) => bytes.extend_from_slice(&buffer[..count]),
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                    ) =>
-                {
-                    break;
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Ok(PtySnapshot::from_bytes(bytes))
-    }
+fn default_command() -> TerminalCommand {
+    TerminalCommand::new(env::var("SHELL").unwrap_or_else(|_| "bash".to_string()), [])
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SocketInput {
-    socket: PathBuf,
-    text: Vec<u8>,
-}
-
-impl SocketInput {
-    fn new(socket: PathBuf, text: Vec<u8>) -> Self {
-        Self { socket, text }
-    }
-
-    fn send(self) -> Result<()> {
-        let mut stream = UnixStream::connect(&self.socket)?;
-        if !self.text.is_empty() {
-            SendFrame::input(&self.text).write_to(&mut stream)?;
-            stream.flush()?;
-            thread::sleep(Duration::from_millis(3000));
-        }
-        SendFrame::input(b"\r").write_to(&mut stream)?;
-        stream.flush()?;
-        thread::sleep(Duration::from_millis(1000));
-        Ok(())
-    }
-
-    fn type_text(self) -> Result<()> {
-        let mut stream = UnixStream::connect(&self.socket)?;
-        if !self.text.is_empty() {
-            SendFrame::input(&self.text).write_to(&mut stream)?;
-            stream.flush()?;
-            thread::sleep(Duration::from_millis(1000));
-        }
-        Ok(())
-    }
-}
-
-enum ClientFrame {
-    Input(Vec<u8>),
-    Resize(PtySize),
-}
-
-impl ClientFrame {
-    fn read_from(reader: &mut impl Read) -> std::io::Result<Self> {
-        let mut tag = [0_u8; 1];
-        reader.read_exact(&mut tag)?;
-        Self::read_from_tag(tag[0], reader)
-    }
-
-    fn read_from_tag(tag: u8, reader: &mut impl Read) -> std::io::Result<Self> {
-        match tag {
-            b'I' => {
-                let mut length = [0_u8; 4];
-                reader.read_exact(&mut length)?;
-                let length = u32::from_be_bytes(length) as usize;
-                let mut bytes = vec![0_u8; length];
-                reader.read_exact(&mut bytes)?;
-                Ok(Self::Input(bytes))
-            }
-            b'R' => {
-                let mut payload = [0_u8; 4];
-                reader.read_exact(&mut payload)?;
-                Ok(Self::Resize(PtySize {
-                    rows: u16::from_be_bytes([payload[0], payload[1]]),
-                    cols: u16::from_be_bytes([payload[2], payload[3]]),
-                    pixel_width: 0,
-                    pixel_height: 0,
-                }))
-            }
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "unknown persona wezterm client frame",
-            )),
-        }
-    }
-}
-
-struct ClientHandshake {
-    replay: bool,
-    first_tag: Option<u8>,
-}
-
-impl ClientHandshake {
-    fn read_from(stream: &mut UnixStream) -> std::io::Result<Self> {
-        stream.set_read_timeout(Some(Duration::from_millis(50)))?;
-        let mut tag = [0_u8; 1];
-        let read = stream.read_exact(&mut tag);
-        stream.set_read_timeout(None)?;
-        match read {
-            Ok(()) if tag[0] == b'H' => {
-                let mut mode = [0_u8; 1];
-                stream.read_exact(&mut mode)?;
-                Ok(Self {
-                    replay: mode[0] == b'R',
-                    first_tag: None,
-                })
-            }
-            Ok(()) => Ok(Self {
-                replay: false,
-                first_tag: Some(tag[0]),
-            }),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                Ok(Self {
-                    replay: true,
-                    first_tag: None,
-                })
-            }
-            Err(error) => Err(error),
-        }
-    }
-
-    fn replay_scrollback(&self) -> bool {
-        self.replay
-    }
-
-    fn into_first_tag(self) -> Option<u8> {
-        self.first_tag
-    }
-}
-
-struct ViewerHandshake {
-    enabled: bool,
-    replay: bool,
-}
-
-impl ViewerHandshake {
-    fn from_environment() -> Self {
-        let enabled = matches!(
-            env::var("PERSONA_WEZTERM_HANDSHAKE").as_deref(),
-            Ok("1" | "true")
-        );
-        let replay = matches!(
-            env::var("PERSONA_WEZTERM_REPLAY").as_deref(),
-            Ok("1" | "true")
-        );
-        Self { enabled, replay }
-    }
-
-    fn write_to(&self, writer: &mut impl Write) -> Result<()> {
-        if !self.enabled {
-            return Ok(());
-        }
-        writer.write_all(&[b'H'])?;
-        writer.write_all(&[if self.replay { b'R' } else { b'N' }])?;
-        writer.flush()?;
-        Ok(())
-    }
-}
-
-enum SendFrame<'bytes> {
-    Input(&'bytes [u8]),
-    Resize { rows: u16, columns: u16 },
-}
-
-impl<'bytes> SendFrame<'bytes> {
-    fn input(bytes: &'bytes [u8]) -> Self {
-        Self::Input(bytes)
-    }
-
-    fn resize(rows: u16, columns: u16) -> Self {
-        Self::Resize { rows, columns }
-    }
-
-    fn write_to(&self, writer: &mut impl Write) -> Result<()> {
-        match self {
-            Self::Input(bytes) => {
-                writer.write_all(&[b'I'])?;
-                writer.write_all(&((*bytes).len() as u32).to_be_bytes())?;
-                writer.write_all(bytes)?;
-            }
-            Self::Resize { rows, columns } => {
-                writer.write_all(&[b'R'])?;
-                writer.write_all(&rows.to_be_bytes())?;
-                writer.write_all(&columns.to_be_bytes())?;
-            }
-        }
-        writer.flush()?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PtyIoContext {
-    operation: &'static str,
-}
-
-impl PtyIoContext {
-    fn for_operation(operation: &'static str) -> Self {
-        Self { operation }
-    }
-
-    fn into_io_error(self, error: impl std::fmt::Display) -> std::io::Error {
-        std::io::Error::other(format!("{}: {}", self.operation, error))
-    }
+fn socket_and_text_from_environment() -> (PathBuf, Vec<u8>) {
+    let mut arguments = env::args_os().skip(1);
+    let socket = arguments
+        .next()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_socket);
+    let text = arguments
+        .next()
+        .map(|value| value.to_string_lossy().into_owned().into_bytes())
+        .unwrap_or_default();
+    (socket, text)
 }

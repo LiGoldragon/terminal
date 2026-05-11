@@ -1,5 +1,5 @@
 {
-  description = "Persona terminal harness control through WezTerm.";
+  description = "Persona terminal session owner built around terminal-cell.";
 
   inputs = {
     nixpkgs.url = "github:LiGoldragon/nixpkgs?ref=main";
@@ -48,8 +48,8 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              pname = "persona-wezterm";
-              meta.mainProgram = "persona-wezterm-view";
+              pname = "persona-terminal";
+              meta.mainProgram = "persona-terminal-view";
             }
           );
         }
@@ -63,27 +63,27 @@
         {
           default = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-view";
+            program = "${package}/bin/persona-terminal-view";
           };
           daemon = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-daemon";
+            program = "${package}/bin/persona-terminal-daemon";
           };
           view = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-view";
+            program = "${package}/bin/persona-terminal-view";
           };
           send = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-send";
+            program = "${package}/bin/persona-terminal-send";
           };
           capture = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-capture";
+            program = "${package}/bin/persona-terminal-capture";
           };
           type = {
             type = "app";
-            program = "${package}/bin/persona-wezterm-type";
+            program = "${package}/bin/persona-terminal-type";
           };
         }
       );
@@ -114,7 +114,6 @@
               context.toolchain
               context.pkgs.jujutsu
               context.pkgs.nix
-              context.pkgs.wezterm
             ];
           };
         }

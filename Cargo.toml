@@ -1,42 +1,44 @@
 [package]
-name         = "persona-wezterm"
+name         = "persona-terminal"
 version      = "0.1.0"
 edition      = "2024"
 rust-version = "1.88"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/persona-wezterm"
-description  = "Persona terminal harness control through WezTerm and durable PTYs."
+repository   = "https://github.com/LiGoldragon/persona-terminal"
+description  = "Persona terminal session owner built around terminal-cell."
 
 [lib]
-name = "persona_wezterm"
+name = "persona_terminal"
 path = "src/lib.rs"
 
 [[bin]]
-name = "persona-wezterm-daemon"
-path = "src/bin/persona-wezterm-daemon.rs"
+name = "persona-terminal-daemon"
+path = "src/bin/persona-terminal-daemon.rs"
 
 [[bin]]
-name = "persona-wezterm-view"
-path = "src/bin/persona-wezterm-view.rs"
+name = "persona-terminal-view"
+path = "src/bin/persona-terminal-view.rs"
 
 [[bin]]
-name = "persona-wezterm-send"
-path = "src/bin/persona-wezterm-send.rs"
+name = "persona-terminal-send"
+path = "src/bin/persona-terminal-send.rs"
 
 [[bin]]
-name = "persona-wezterm-capture"
-path = "src/bin/persona-wezterm-capture.rs"
+name = "persona-terminal-capture"
+path = "src/bin/persona-terminal-capture.rs"
 
 [[bin]]
-name = "persona-wezterm-type"
-path = "src/bin/persona-wezterm-type.rs"
+name = "persona-terminal-type"
+path = "src/bin/persona-terminal-type.rs"
 
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
-portable-pty = "0.8"
+signal-hook  = "0.3"
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
+terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"
+tokio        = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 vt100        = "0.16"
 
 [lints.rust]

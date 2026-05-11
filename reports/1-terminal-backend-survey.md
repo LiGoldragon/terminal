@@ -2,22 +2,27 @@
 
 *Persona terminal transport backend comparison, written 2026-05-10.*
 
+Status as of 2026-05-11: the repo has been renamed to `persona-terminal`.
+WezTerm-specific code is shelved adapter material only. `terminal-cell` is the
+active low-level PTY/transcript primitive under the Persona-facing terminal
+owner.
+
 ## Summary
 
-`persona-wezterm` exists and works as the current terminal transport
-component. It is a Rust crate that owns a durable PTY daemon, detachable
-viewer, raw input sender, raw typer, scrollback capture, and a WezTerm mux
-helper.
+`persona-terminal` exists and works as the current terminal transport
+component. It is a Rust crate that owns a durable terminal-cell daemon,
+detachable viewer, raw input sender, raw typer, scrollback capture, and shelved
+WezTerm mux helper code.
 
 The current implementation can communicate with agent harnesses through
 terminal input today:
 
-- `persona-wezterm-daemon` starts a child process behind a durable PTY and
+- `persona-terminal-daemon` starts a child process behind a durable PTY and
   listens on a Unix socket.
-- `persona-wezterm-view` attaches a disposable terminal viewer to that socket.
-- `persona-wezterm-send` writes a prompt plus Enter.
-- `persona-wezterm-type` writes raw text without Enter.
-- `persona-wezterm-capture` replays scrollback or visible screen text.
+- `persona-terminal-view` attaches a disposable terminal viewer to that socket.
+- `persona-terminal-send` writes a prompt plus Enter.
+- `persona-terminal-type` writes raw text without Enter.
+- `persona-terminal-capture` replays scrollback or visible screen text.
 - `WezTermMux` uses `wezterm cli --prefer-mux send-text` against an existing
   WezTerm pane.
 
@@ -39,12 +44,12 @@ flowchart LR
 
 `persona-harness` should talk to a typed terminal contract, not to a concrete
 viewer. `persona-router` should not import terminal transport. The current
-direct router to `persona-wezterm` dependency is a transitional violation of
+direct router to `persona-terminal` dependency is a transitional violation of
 the intended direction.
 
 ## Current Local State
 
-Repository: `/git/github.com/LiGoldragon/persona-wezterm`
+Repository: `/git/github.com/LiGoldragon/persona-terminal`
 
 Current parent commit:
 
@@ -58,22 +63,22 @@ Current implementation surfaces:
 | Viewer | `src/pty.rs` | Uses `crossterm` raw mode and main/alternate screen presentation modes. |
 | Capture | `src/pty.rs` | Uses `vt100` to project raw bytes into visible screen text. |
 | WezTerm mux helper | `src/terminal.rs` | Calls `wezterm cli --prefer-mux send-text --pane-id ...`. |
-| Kameo delivery actor | `src/terminal.rs` | Exists as `TerminalDelivery`, but current design reports say it is not spawned in production and should be removed or made real. |
+| Kameo delivery actor | `src/terminal.rs` | Removed on 2026-05-11. The WezTerm helper is adapter code, not a blocking actor. |
 
 Current binaries:
 
 | Binary | Purpose |
 |---|---|
-| `persona-wezterm-daemon` | Start a durable PTY session. |
-| `persona-wezterm-view` | Attach a local terminal viewer to the PTY session. |
-| `persona-wezterm-send` | Send a full prompt and Enter. |
-| `persona-wezterm-type` | Type raw text without Enter. |
-| `persona-wezterm-capture` | Capture raw scrollback or visible screen text. |
+| `persona-terminal-daemon` | Start a durable PTY session. |
+| `persona-terminal-view` | Attach a local terminal viewer to the PTY session. |
+| `persona-terminal-send` | Send a full prompt and Enter. |
+| `persona-terminal-type` | Type raw text without Enter. |
+| `persona-terminal-capture` | Capture raw scrollback or visible screen text. |
 
 Current gaps:
 
 - `signal-persona-terminal` is still missing locally.
-- `persona-router` still imports `persona-wezterm` directly.
+- `persona-router` still imports `persona-terminal` directly.
 - Terminal events are private byte frames, not typed pushed
   `TerminalReady`, `TranscriptDelta`, `TerminalResized`, and
   `TerminalExited` events.
@@ -93,7 +98,7 @@ The backend question is partly covered by older and adjacent reports:
 | `reports/1-gas-city-fiasco.md` | Records why tmux-shaped runtime state failed as a source of truth. |
 | `reports/designer/12-no-polling-delivery-design.md` | Establishes pushed observations and terminal parser concerns. |
 | `reports/operator/67-signal-actor-messaging-gap-audit.md` | Names the router to terminal coupling gap. |
-| `reports/designer/97-persona-system-vision-and-architecture-development.md` | Strongest current design for `signal-persona-terminal` between `persona-harness` and `persona-wezterm`. |
+| `reports/designer/97-persona-system-vision-and-architecture-development.md` | Strongest current design for `signal-persona-terminal` between `persona-harness` and `persona-terminal`. |
 | `reports/system-specialist/99-chroma-wezterm-freeze-incident.md` | Operational warning against global live WezTerm mutation. |
 | `reports/system-specialist/100-wezterm-live-palette-research.md` | Shows WezTerm public CLI lacks a safe per-window palette acknowledgement. |
 | `reports/system-specialist/101-chroma-wezterm-crash-suspects.md` | Points at a Niri/libwayland/WezTerm failure mode and recommends keeping WezTerm out of critical active sessions until isolated. |
@@ -176,7 +181,7 @@ GitHub metrics below are from the GitHub API on 2026-05-10.
 
 ### Raw PTY Plus Parser
 
-This is the current `persona-wezterm` core and should remain the first-class
+This is the current `persona-terminal` core and should remain the first-class
 truth:
 
 - `portable-pty` gives Persona direct child-process and PTY ownership.
@@ -293,7 +298,7 @@ Persona stance: not a useful backend beyond "open a viewer process."
 
 ## Recommended Persona Direction
 
-1. Keep `persona-wezterm` as the current terminal transport repo while the
+1. Keep `persona-terminal` as the current terminal transport repo while the
    implementation is small.
 
 2. Treat the durable PTY plus typed transcript/event stream as the core
@@ -327,13 +332,9 @@ Persona stance: not a useful backend beyond "open a viewer process."
 
    Viewer close must never kill the harness child process.
 
-6. If more than one backend becomes real, split the naming:
-
-   - `persona-terminal` owns backend-neutral PTY and terminal event transport.
-   - `persona-wezterm` owns only the WezTerm viewer/mux adapter.
-
-   Until then, this report lives in `persona-wezterm` because it is the
-   current terminal transport owner.
+6. If more than one backend becomes real, keep them as adapters inside
+   `persona-terminal` unless a future report establishes a stronger boundary.
+   Do not create terminal-brand owner repositories.
 
 ## Source Links
 

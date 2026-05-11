@@ -238,6 +238,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -283,9 +289,22 @@ dependencies = [
  "downcast-rs 2.0.2",
  "dyn-clone",
  "futures",
+ "kameo_macros",
  "serde",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "kameo_macros"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16c9002c9ecd16e1636f566c0bf62db48e70d86ed0d0a91b398955e883217a23"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -431,14 +450,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "persona-wezterm"
+name = "persona-terminal"
 version = "0.1.0"
 dependencies = [
  "crossterm",
  "kameo",
- "portable-pty",
+ "signal-hook",
  "signal-persona-terminal",
+ "terminal-cell",
  "thiserror 2.0.18",
+ "tokio",
  "vt100",
 ]
 
@@ -761,6 +782,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "terminal-cell"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#e0d2bc92dc7414cec8c20fabd63556222d1a85f3"
+dependencies = [
+ "crossterm",
+ "kameo",
+ "portable-pty",
+ "signal-hook",
+ "thiserror 2.0.18",
+ "tokio",
+ "vt100",
 ]
 
 [[package]]

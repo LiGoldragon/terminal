@@ -1,17 +1,22 @@
-# persona-wezterm — architecture
+# persona-terminal — architecture
 
-*Durable PTY and detachable WezTerm viewer transport for Persona harnesses.*
+*Persona-facing terminal session owner built around terminal-cell.*
 
-`persona-wezterm` is the current owner of terminal byte transport. It keeps
+`persona-terminal` is the current owner of terminal byte transport. It keeps
 harness child processes alive in durable PTYs, lets visible viewers attach and
 detach, records terminal transcript truth, and moves raw input/resize/output
 frames between clients and the PTY. Its Persona-facing boundary is the typed
 `signal-persona-terminal` contract.
 
-The production component name is `persona-terminal`. WezTerm, Ghostty, Niri,
-and other display-specific concerns are viewer adapters around the terminal
-owner, not the owner noun. Until the rename/split lands, this repo carries the
-terminal-owner architecture under its existing checkout name.
+`terminal-cell` is the low-level cell primitive: one child process group, one
+PTY, raw input ports, transcript replay, worker lifecycle observation, and one
+active viewer attachment. This repo is the Persona-facing owner around those
+cells: names, registry policy, typed terminal requests/events, component Sema
+metadata, and viewer-adapter launch policy.
+
+WezTerm is shelved as adapter code. It is not the owner noun, not the default
+runtime, and not a repository boundary. Ghostty/Niri/other viewer behavior lives
+behind this same `persona-terminal` owner.
 
 ---
 
@@ -23,41 +28,42 @@ authorization.
 
 ```mermaid
 flowchart LR
-    "Codex or Claude harness" --- "durable PTY daemon"
-    "durable PTY daemon" -->|"sequenced transcript + live bytes"| "visible viewer"
-    "visible viewer" -->|"raw keyboard + resize frames"| "durable PTY daemon"
-    "persona-harness" -->|"programmatic input bytes"| "durable PTY daemon"
-    "persona-harness" -->|"raw terminal request"| "durable PTY daemon"
+    "Codex or Claude harness" --- "terminal-cell daemon"
+    "terminal-cell daemon" -->|"sequenced transcript + live bytes"| "visible viewer"
+    "visible viewer" -->|"raw keyboard + resize frames"| "terminal-cell daemon"
+    "persona-harness" -->|"programmatic input bytes"| "persona-terminal"
+    "persona-terminal" -->|"raw terminal request"| "terminal-cell daemon"
 ```
 
 ## 1 · Component Surface
 
-`persona-wezterm` exposes:
+`persona-terminal` exposes:
 
 - durable PTY daemon binary;
 - visible viewer binary;
 - raw input sender binary;
 - output scrollback replay;
 - resize propagation;
-- WezTerm mux/socket attachment helpers;
+- terminal-cell socket adapter;
+- shelved WezTerm mux helper code for future adapter work;
 - `signal-persona-terminal` request/event adapter.
 
 ## 2 · State and Ownership
 
-The daemon owns the child process and PTY. Viewers are disposable clients.
-Closing a viewer does not kill the harness.
+The terminal cell owns the child process and PTY. Viewers are disposable
+clients. Closing a viewer does not kill the harness.
 
-The production `persona-terminal` supervisor owns the registry around those
-PTY cells: named sessions, session health, socket paths, viewer attachments,
-and Sema-backed durable terminal metadata. The low-level cell owns one child
-process group and one PTY. The supervisor chooses and launches viewer adapters;
-the adapters draw windows and forward raw terminal bytes.
+The production `persona-terminal` supervisor owns the registry around terminal
+cells: named sessions, session health, socket paths, viewer attachments, and
+Sema-backed durable terminal metadata. The low-level `terminal-cell` session
+owns one child process group and one PTY. The supervisor chooses and launches
+viewer adapters; the adapters draw windows and forward raw terminal bytes.
 
 ## 3 · Boundaries
 
 This repo owns:
 
-- terminal session registry policy until the `persona-terminal` split lands;
+- terminal session registry policy;
 - PTY lifecycle;
 - viewer attachment;
 - raw input and resize frames;
@@ -74,8 +80,9 @@ This repo does not own:
 - authorization.
 
 Production registry state lives in `persona-terminal`'s component Sema, not in
-viewer-specific files. Runtime-directory metadata remains a convenience cache;
-the typed terminal registry is the durable source of truth.
+viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
+remains a convenience cache; the typed terminal registry is the durable source
+of truth.
 
 ## 4 · Constraints
 
@@ -126,19 +133,20 @@ the typed terminal registry is the durable source of truth.
 ## 6 · Invariants
 
 - Harness processes are durable across viewer close.
-- Viewer mode is explicit: scrollback mode or application mode.
+- Viewer adapter mode is explicit. The byte path stays in `terminal-cell`; any
+  Ghostty, Niri, WezTerm, or plain-terminal behavior stays adapter-local.
 - This repo transports bytes without interpreting message semantics.
 - Reusable stateful workflows are scripts or Nix apps.
 
 ## Code Map
 
 ```text
-src/pty.rs                         PTY daemon model
-src/terminal.rs                    terminal frame records
+src/pty.rs                         terminal-cell daemon/view/client adapter
+src/terminal.rs                    shelved WezTerm adapter helper
 src/contract.rs                    signal-persona-terminal adapter
-src/bin/persona-wezterm-daemon.rs  daemon entry
-src/bin/persona-wezterm-view.rs    viewer entry
-src/bin/persona-wezterm-send.rs    raw input sender
+src/bin/persona-terminal-daemon.rs  daemon entry
+src/bin/persona-terminal-view.rs    viewer entry
+src/bin/persona-terminal-send.rs    raw input sender
 ```
 
 ## See Also

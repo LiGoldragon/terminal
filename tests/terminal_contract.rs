@@ -1,4 +1,4 @@
-use persona_wezterm::contract::TerminalTransportBinding;
+use persona_terminal::contract::TerminalTransportBinding;
 use signal_persona_terminal::{
     TerminalConnection, TerminalDetached, TerminalDetachment, TerminalDetachmentReason,
     TerminalEvent, TerminalInput, TerminalInputBytes, TerminalName, TerminalRejected,
@@ -10,7 +10,7 @@ fn terminal_name() -> TerminalName {
 }
 
 fn binding() -> TerminalTransportBinding {
-    TerminalTransportBinding::from_socket_path(terminal_name(), "/tmp/persona-wezterm-test.sock")
+    TerminalTransportBinding::from_socket_path(terminal_name(), "/tmp/persona-terminal-test.sock")
 }
 
 #[test]

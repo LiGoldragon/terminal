@@ -8,7 +8,7 @@ use signal_persona_terminal::{
 };
 
 use crate::error::Result;
-use crate::pty::PtySocket;
+use crate::pty::TerminalSocket;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalTransportBinding {
@@ -148,8 +148,8 @@ impl TerminalTransportBinding {
         terminal == &self.terminal
     }
 
-    fn socket(&self) -> PtySocket {
-        PtySocket::from_path(self.socket_path.clone())
+    fn socket(&self) -> TerminalSocket {
+        TerminalSocket::from_path(self.socket_path.clone())
     }
 
     fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> TerminalEvent {

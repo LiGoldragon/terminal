@@ -10,6 +10,9 @@ pub enum Error {
     #[error("terminal delivery through WezTerm failed for pane {pane_id}: {detail}")]
     DeliveryFailed { pane_id: u32, detail: String },
 
+    #[error("terminal cell: {detail}")]
+    TerminalCell { detail: String },
+
     #[error("missing command for PTY daemon")]
     MissingCommand,
 
