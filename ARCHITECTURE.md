@@ -8,6 +8,11 @@ detach, records terminal transcript truth, and moves raw input/resize/output
 frames between clients and the PTY. Its Persona-facing boundary is the typed
 `signal-persona-terminal` contract.
 
+The production component name is `persona-terminal`. WezTerm, Ghostty, Niri,
+and other display-specific concerns are viewer adapters around the terminal
+owner, not the owner noun. Until the rename/split lands, this repo carries the
+terminal-owner architecture under its existing checkout name.
+
 ---
 
 ## 0 · TL;DR
@@ -42,12 +47,19 @@ flowchart LR
 The daemon owns the child process and PTY. Viewers are disposable clients.
 Closing a viewer does not kill the harness.
 
+The production `persona-terminal` supervisor owns the registry around those
+PTY cells: named sessions, session health, socket paths, viewer attachments,
+and Sema-backed durable terminal metadata. The low-level cell owns one child
+process group and one PTY. The supervisor chooses and launches viewer adapters;
+the adapters draw windows and forward raw terminal bytes.
+
 ## 3 · Boundaries
 
 This repo owns:
 
+- terminal session registry policy until the `persona-terminal` split lands;
 - PTY lifecycle;
-- WezTerm viewer attachment;
+- viewer attachment;
 - raw input and resize frames;
 - output scrollback replay;
 - terminal transport request/event adaptation.
@@ -60,6 +72,10 @@ This repo does not own:
 - harness provider-usage interpretation (`persona-harness`);
 - OS focus policy (`persona-system`);
 - authorization.
+
+Production registry state lives in `persona-terminal`'s component Sema, not in
+viewer-specific files. Runtime-directory metadata remains a convenience cache;
+the typed terminal registry is the durable source of truth.
 
 ## 4 · Constraints
 
