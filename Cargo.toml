@@ -2,7 +2,7 @@
 name         = "persona-terminal"
 version      = "0.1.0"
 edition      = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/persona-terminal"
 description  = "Persona terminal session owner built around terminal-cell."
@@ -31,9 +31,19 @@ path = "src/bin/persona-terminal-capture.rs"
 name = "persona-terminal-type"
 path = "src/bin/persona-terminal-type.rs"
 
+[[bin]]
+name = "persona-terminal-sessions"
+path = "src/bin/persona-terminal-sessions.rs"
+
+[[bin]]
+name = "persona-terminal-resolve"
+path = "src/bin/persona-terminal-resolve.rs"
+
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
+rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-hook  = "0.3"
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }

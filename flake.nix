@@ -58,7 +58,20 @@
       apps = forSystems (
         system:
         let
+          context = mkContext system;
           package = self.packages.${system}.default;
+          namedSessionRegistryWitness = context.pkgs.writeShellApplication {
+            name = "persona-terminal-test-named-session-registry";
+            runtimeInputs = [
+              context.pkgs.coreutils
+              context.pkgs.gnugrep
+            ];
+            text = ''
+              export PERSONA_TERMINAL_PACKAGE=${package}
+              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              ${context.pkgs.bash}/bin/bash ${./scripts/named-session-registry-witness}
+            '';
+          };
         in
         {
           default = {
@@ -84,6 +97,20 @@
           type = {
             type = "app";
             program = "${package}/bin/persona-terminal-type";
+          };
+          sessions = {
+            type = "app";
+            program = "${package}/bin/persona-terminal-sessions";
+          };
+          resolve = {
+            type = "app";
+            program = "${package}/bin/persona-terminal-resolve";
+          };
+          # This witness allocates a host PTY, so it is an app instead of a
+          # pure Nix builder check.
+          test-named-session-registry = {
+            type = "app";
+            program = "${namedSessionRegistryWitness}/bin/persona-terminal-test-named-session-registry";
           };
         }
       );

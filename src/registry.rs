@@ -1,0 +1,145 @@
+use std::io::Write;
+use std::path::PathBuf;
+
+use signal_persona_terminal::TerminalName;
+
+use crate::Error;
+use crate::Result;
+use crate::tables::{StoreLocation, StoredTerminalSession, TerminalTables};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionListRequest {
+    store: StoreLocation,
+}
+
+impl SessionListRequest {
+    pub fn from_environment() -> Self {
+        Self {
+            store: SessionArguments::from_environment().store(),
+        }
+    }
+
+    pub fn run(self, mut output: impl Write) -> Result<()> {
+        for session in TerminalTables::open(&self.store)?.sessions()? {
+            SessionLine::new(session).write_to(&mut output)?;
+        }
+        output.flush()?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionResolveRequest {
+    store: StoreLocation,
+    terminal: TerminalName,
+}
+
+impl SessionResolveRequest {
+    pub fn new(store: StoreLocation, terminal: TerminalName) -> Self {
+        Self { store, terminal }
+    }
+
+    pub fn from_environment() -> Self {
+        let arguments = SessionArguments::from_environment();
+        Self::new(arguments.store(), arguments.terminal())
+    }
+
+    pub fn run(self, mut output: impl Write) -> Result<()> {
+        if let Some(session) = TerminalTables::open(&self.store)?.session(&self.terminal)? {
+            writeln!(output, "{}", session.socket_path_text())?;
+        } else {
+            return Err(Error::UnknownTerminalSession {
+                terminal: self.terminal.as_str().to_string(),
+            });
+        }
+        output.flush()?;
+        Ok(())
+    }
+}
+
+struct SessionLine {
+    session: StoredTerminalSession,
+}
+
+impl SessionLine {
+    fn new(session: StoredTerminalSession) -> Self {
+        Self { session }
+    }
+
+    fn write_to(&self, output: &mut impl Write) -> Result<()> {
+        writeln!(
+            output,
+            "{}\t{}\t{}\t{}\t{}",
+            self.session.terminal().as_str(),
+            self.session.socket_path_text(),
+            self.session.state().as_str(),
+            self.session.generation().into_u64(),
+            self.session.transcript_sequence().into_u64()
+        )?;
+        Ok(())
+    }
+}
+
+struct SessionArguments {
+    store: StoreLocation,
+    terminal: Option<TerminalName>,
+}
+
+impl SessionArguments {
+    fn from_environment() -> Self {
+        let mut arguments = std::env::args_os().skip(1);
+        let mut store = None;
+        let mut terminal = None;
+
+        while let Some(argument) = arguments.next() {
+            match argument.to_string_lossy().as_ref() {
+                "--store" => store = arguments.next().map(StoreLocation::new),
+                "--terminal" | "--name" => {
+                    terminal = arguments
+                        .next()
+                        .map(|value| TerminalName::new(value.to_string_lossy()))
+                }
+                value if terminal.is_none() => terminal = Some(TerminalName::new(value)),
+                _ => {}
+            }
+        }
+
+        Self {
+            store: store.unwrap_or_else(StoreLocation::from_environment),
+            terminal,
+        }
+    }
+
+    fn store(&self) -> StoreLocation {
+        self.store.clone()
+    }
+
+    fn terminal(&self) -> TerminalName {
+        self.terminal
+            .clone()
+            .unwrap_or_else(|| TerminalName::new("default"))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionRegistration {
+    store: StoreLocation,
+    session: StoredTerminalSession,
+}
+
+impl SessionRegistration {
+    pub fn ready(
+        store: StoreLocation,
+        terminal: TerminalName,
+        socket_path: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            store,
+            session: StoredTerminalSession::ready(terminal, socket_path),
+        }
+    }
+
+    pub fn record(&self) -> Result<()> {
+        TerminalTables::open(&self.store)?.put_session(&self.session)
+    }
+}

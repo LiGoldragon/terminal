@@ -19,3 +19,20 @@ tests that need an occupied prompt buffer.
 requests scrollback replay, writes the current bytes to stdout, and exits. It is
 a debugging and guard substrate for higher layers; it does not interpret Persona
 messages.
+
+## Named sessions
+
+`persona-terminal-daemon --store <terminal.redb> --name <terminal> --socket
+<socket> -- <command> [args...]` starts a terminal cell and records the named
+session in the component Sema database after the socket is bound.
+
+`persona-terminal-sessions --store <terminal.redb>` prints the registered
+sessions. `persona-terminal-resolve --store <terminal.redb> <terminal>` prints
+the socket path for one registered session. These are read-only inspection
+clients for testing and operations; effect-bearing input and capture still go
+through the terminal socket.
+
+`nix run .#test-named-session-registry` starts a named daemon, resolves the
+socket through the Sema-backed registry, sends input through the resolved
+socket, and captures the transcript artifact. It is a stateful host-PTY witness,
+so it is exposed as a flake app rather than a pure builder check.

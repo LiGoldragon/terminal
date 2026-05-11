@@ -149,3 +149,19 @@ fn persona_terminal_uses_terminal_cell_as_the_pty_cell_primitive() {
     assert!(pty_source.contains("TerminalCell::spawn_session"));
     assert!(pty_source.contains("TerminalCellSocketClient"));
 }
+
+#[test]
+fn terminal_registry_state_goes_through_component_sema() {
+    let manifest = SourceFile::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
+    let tables_source = SourceFile::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("tables.rs"),
+    );
+
+    assert!(manifest.contains("sema"));
+    assert!(tables_source.contains("Sema::open_with_schema"));
+    assert!(tables_source.contains("Table<&'static str, StoredTerminalSession>"));
+    assert!(!tables_source.contains("registry.json"));
+    assert!(!tables_source.contains("sessions.json"));
+}

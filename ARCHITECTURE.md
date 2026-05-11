@@ -45,6 +45,8 @@ flowchart LR
 - output scrollback replay;
 - resize propagation;
 - terminal-cell socket adapter;
+- component Sema table for named terminal sessions;
+- read-only session inspection CLIs;
 - `signal-persona-terminal` request/event adapter.
 
 ## 2 · State and Ownership
@@ -57,6 +59,12 @@ cells: named sessions, session health, socket paths, viewer attachments, and
 Sema-backed durable terminal metadata. The low-level `terminal-cell` session
 owns one child process group and one PTY. The supervisor chooses and launches
 viewer adapters; the adapters draw windows and forward raw terminal bytes.
+
+The current daemon writes a named session record into the component Sema after
+the terminal-cell socket is bound. The `persona-terminal-sessions` and
+`persona-terminal-resolve` binaries are read-only inspection clients for that
+Sema state; effect-bearing input, capture, attach, and resize clients still
+talk to the terminal socket.
 
 ## 3 · Boundaries
 
@@ -101,6 +109,9 @@ of truth.
 - Terminal input is raw byte transport. `TerminalInputBytes` are written to the
   PTY without Persona-message parsing, shell parsing, slash-command parsing, or
   provider quota semantics in the terminal owner.
+- Named terminal sessions are component state. The daemon records them through
+  `persona-terminal`'s component Sema; no registry JSON, text manifest, or
+  viewer-specific state file is the source of truth.
 - Programmatic input and viewer keyboard input enter through the same terminal
   input port and produce the same accepted/rejected terminal event shape.
 - Harness slash-command usage probes are harness-adapter behavior. The terminal
@@ -128,6 +139,10 @@ of truth.
 - Harness-owned quota: fake harness adapter maps a usage probe to raw terminal
   input and parses a fixture transcript into a harness observation; terminal
   transport contains only byte transport.
+- Component Sema registry: start or register a named terminal session, read it
+  back with the session inspection CLI, and prove the socket path came from the
+  Sema table. The flake exposes this stateful witness as
+  `nix run .#test-named-session-registry`.
 
 ## 6 · Invariants
 
@@ -142,9 +157,14 @@ of truth.
 ```text
 src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-persona-terminal adapter
+src/tables.rs                      component Sema tables for named sessions
+src/registry.rs                    session registration + inspection clients
 src/bin/persona-terminal-daemon.rs  daemon entry
 src/bin/persona-terminal-view.rs    viewer entry
 src/bin/persona-terminal-send.rs    raw input sender
+src/bin/persona-terminal-sessions.rs read-only session inspection
+src/bin/persona-terminal-resolve.rs  read-only session name resolver
+scripts/named-session-registry-witness stateful named-session witness
 ```
 
 ## See Also

@@ -7,6 +7,12 @@ pub enum Error {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("sema: {0}")]
+    Sema(#[from] sema::Error),
+
+    #[error("unknown terminal session: {terminal}")]
+    UnknownTerminalSession { terminal: String },
+
     #[error("terminal cell: {detail}")]
     TerminalCell { detail: String },
 

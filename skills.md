@@ -10,6 +10,8 @@ Rules for work here:
 - `terminal-cell` is the low-level PTY/transcript primitive. Persona-facing
   naming, registry policy, component Sema metadata, and Signal adaptation live
   here.
+- Session registry state lives in this repo's component Sema. Do not add
+  registry JSON, text manifests, or viewer-owned state files for terminal names.
 - Viewer and compositor behavior is adapter-local around the terminal owner.
   Do not revive terminal-brand mux helpers as runtime paths.
 - Keep harness processes durable. Closing a viewer must not kill the child
@@ -20,3 +22,6 @@ Rules for work here:
   input path.
 - Name repeatable stateful workflows under `scripts/` and expose them from
   `flake.nix`.
+- Keep session inspection CLIs read-only. Effect-bearing commands use the
+  daemon/socket path until the supervisor control socket owns the full command
+  surface.

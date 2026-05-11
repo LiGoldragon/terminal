@@ -21,6 +21,8 @@ use terminal_cell::{
 use tokio::runtime::{Builder, Handle};
 
 use crate::error::{Error, Result};
+use crate::registry::SessionRegistration;
+use crate::tables::StoreLocation;
 
 const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
 
@@ -28,38 +30,13 @@ const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
 pub struct DaemonRequest {
     socket: PathBuf,
     command: TerminalCommand,
+    registration: Option<SessionRegistration>,
 }
 
 impl DaemonRequest {
     pub fn from_environment() -> Self {
-        let mut arguments = env::args().skip(1);
-        let first = arguments.next();
-
-        let (socket, command) = match first.as_deref() {
-            Some("--socket") => {
-                let socket = arguments
-                    .next()
-                    .map(PathBuf::from)
-                    .unwrap_or_else(default_socket);
-                let command = match arguments.next().as_deref() {
-                    Some("--") => Self::command_from(arguments.collect()),
-                    Some(program) => {
-                        let mut rest = vec![program.to_string()];
-                        rest.extend(arguments);
-                        Self::command_from(rest)
-                    }
-                    None => default_command(),
-                };
-                (socket, command)
-            }
-            Some(socket) => {
-                let command = Self::command_from(arguments.collect());
-                (PathBuf::from(socket), command)
-            }
-            None => (default_socket(), default_command()),
-        };
-
-        Self { socket, command }
+        let arguments = DaemonArguments::from_environment();
+        arguments.into_request()
     }
 
     pub fn run(self) -> Result<()> {
@@ -68,28 +45,30 @@ impl DaemonRequest {
             TerminalCellDaemon::new(
                 self.socket,
                 TerminalLaunch::new(self.command, TerminalSize::new(24, 80)),
+                self.registration,
             )
             .run(),
         )
-    }
-
-    fn command_from(command: Vec<String>) -> TerminalCommand {
-        let mut command = command.into_iter();
-        match command.next() {
-            Some(program) => TerminalCommand::new(program, command.collect::<Vec<_>>()),
-            None => default_command(),
-        }
     }
 }
 
 struct TerminalCellDaemon {
     socket: PathBuf,
     launch: TerminalLaunch,
+    registration: Option<SessionRegistration>,
 }
 
 impl TerminalCellDaemon {
-    fn new(socket: PathBuf, launch: TerminalLaunch) -> Self {
-        Self { socket, launch }
+    fn new(
+        socket: PathBuf,
+        launch: TerminalLaunch,
+        registration: Option<SessionRegistration>,
+    ) -> Self {
+        Self {
+            socket,
+            launch,
+            registration,
+        }
     }
 
     async fn run(self) -> Result<()> {
@@ -106,6 +85,9 @@ impl TerminalCellDaemon {
 
         TerminalSocketFile::new(self.socket.as_path()).prepare()?;
         let listener = UnixListener::bind(&self.socket)?;
+        if let Some(registration) = &self.registration {
+            registration.record()?;
+        }
         let runtime = Handle::current();
 
         println!("persona-terminal-daemon socket={}", self.socket.display());
@@ -119,6 +101,75 @@ impl TerminalCellDaemon {
             detail: format!("terminal daemon task failed: {error}"),
         })??;
         Ok(())
+    }
+}
+
+struct DaemonArguments {
+    socket: PathBuf,
+    command: TerminalCommand,
+    store: Option<StoreLocation>,
+    terminal: Option<signal_persona_terminal::TerminalName>,
+}
+
+impl DaemonArguments {
+    fn from_environment() -> Self {
+        let mut arguments = env::args_os().skip(1);
+        let mut socket = None;
+        let mut store = None;
+        let mut terminal = None;
+        let mut command = Vec::new();
+
+        while let Some(argument) = arguments.next() {
+            match argument.to_string_lossy().as_ref() {
+                "--" => {
+                    command.extend(arguments.map(|value| value.to_string_lossy().into_owned()));
+                    break;
+                }
+                "--socket" => socket = arguments.next().map(PathBuf::from),
+                "--store" => store = arguments.next().map(StoreLocation::new),
+                "--name" | "--terminal" => {
+                    terminal = arguments.next().map(|value| {
+                        signal_persona_terminal::TerminalName::new(value.to_string_lossy())
+                    })
+                }
+                value if socket.is_none() => socket = Some(PathBuf::from(value)),
+                value => {
+                    command.push(value.to_string());
+                    command.extend(arguments.map(|value| value.to_string_lossy().into_owned()));
+                    break;
+                }
+            }
+        }
+
+        Self {
+            socket: socket.unwrap_or_else(default_socket),
+            command: Self::command_from(command),
+            store,
+            terminal,
+        }
+    }
+
+    fn into_request(self) -> DaemonRequest {
+        let registration = self.terminal.map(|terminal| {
+            SessionRegistration::ready(
+                self.store.unwrap_or_else(StoreLocation::from_environment),
+                terminal,
+                self.socket.clone(),
+            )
+        });
+        DaemonRequest {
+            socket: self.socket,
+            command: self.command,
+            registration,
+        }
+    }
+
+    fn command_from(command: Vec<String>) -> TerminalCommand {
+        let mut command = command.into_iter();
+        match command.next() {
+            Some(program) => TerminalCommand::new(program, command.collect::<Vec<_>>()),
+            None => default_command(),
+        }
     }
 }
 
