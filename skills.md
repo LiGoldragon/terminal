@@ -10,8 +10,8 @@ Rules for work here:
 - `terminal-cell` is the low-level PTY/transcript primitive. Persona-facing
   naming, registry policy, component Sema metadata, and Signal adaptation live
   here.
-- WezTerm/Ghostty/Niri behavior is viewer-adapter behavior around the terminal
-  owner. WezTerm code is currently shelved adapter code, not a required runtime.
+- Viewer and compositor behavior is adapter-local around the terminal owner.
+  Do not revive terminal-brand mux helpers as runtime paths.
 - Keep harness processes durable. Closing a viewer must not kill the child
   harness process.
 - Keep Persona message semantics out of this repo.

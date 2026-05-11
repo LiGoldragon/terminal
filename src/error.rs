@@ -7,9 +7,6 @@ pub enum Error {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("terminal delivery through WezTerm failed for pane {pane_id}: {detail}")]
-    DeliveryFailed { pane_id: u32, detail: String },
-
     #[error("terminal cell: {detail}")]
     TerminalCell { detail: String },
 

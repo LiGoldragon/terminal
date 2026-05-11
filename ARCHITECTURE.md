@@ -14,9 +14,9 @@ active viewer attachment. This repo is the Persona-facing owner around those
 cells: names, registry policy, typed terminal requests/events, component Sema
 metadata, and viewer-adapter launch policy.
 
-WezTerm is shelved as adapter code. It is not the owner noun, not the default
-runtime, and not a repository boundary. Ghostty/Niri/other viewer behavior lives
-behind this same `persona-terminal` owner.
+Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
+behind this same `persona-terminal` owner and must not become a repository
+boundary.
 
 ---
 
@@ -45,7 +45,6 @@ flowchart LR
 - output scrollback replay;
 - resize propagation;
 - terminal-cell socket adapter;
-- shelved WezTerm mux helper code for future adapter work;
 - `signal-persona-terminal` request/event adapter.
 
 ## 2 · State and Ownership
@@ -134,7 +133,7 @@ of truth.
 
 - Harness processes are durable across viewer close.
 - Viewer adapter mode is explicit. The byte path stays in `terminal-cell`; any
-  Ghostty, Niri, WezTerm, or plain-terminal behavior stays adapter-local.
+  viewer or compositor behavior stays adapter-local.
 - This repo transports bytes without interpreting message semantics.
 - Reusable stateful workflows are scripts or Nix apps.
 
@@ -142,7 +141,6 @@ of truth.
 
 ```text
 src/pty.rs                         terminal-cell daemon/view/client adapter
-src/terminal.rs                    shelved WezTerm adapter helper
 src/contract.rs                    signal-persona-terminal adapter
 src/bin/persona-terminal-daemon.rs  daemon entry
 src/bin/persona-terminal-view.rs    viewer entry

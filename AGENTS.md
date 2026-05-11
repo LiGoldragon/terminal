@@ -15,8 +15,9 @@ primitive; this repo is the Persona-facing owner around it.
 
 This repo owns terminal transport, viewer attachment, and terminal session
 metadata. It does not own Persona message records, authorization, agent
-identity, harness quota interpretation, or the Persona state reducer. WezTerm
-code is adapter/shelved code only; it is not the owner noun or required runtime.
+identity, harness quota interpretation, or the Persona state reducer.
+Terminal-brand mux helpers are retired; the owner noun is `persona-terminal`
+around `terminal-cell`.
 
 ## Version Control
 
