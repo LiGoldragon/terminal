@@ -457,6 +457,7 @@ dependencies = [
  "kameo",
  "rkyv",
  "sema",
+ "signal-core",
  "signal-hook",
  "signal-persona-terminal",
  "terminal-cell",

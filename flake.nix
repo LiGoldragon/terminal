@@ -72,6 +72,18 @@
               ${context.pkgs.bash}/bin/bash ${./scripts/named-session-registry-witness}
             '';
           };
+          terminalSignalWitness = context.pkgs.writeShellApplication {
+            name = "persona-terminal-test-terminal-signal";
+            runtimeInputs = [
+              context.pkgs.coreutils
+              context.pkgs.gnugrep
+            ];
+            text = ''
+              export PERSONA_TERMINAL_PACKAGE=${package}
+              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              ${context.pkgs.bash}/bin/bash ${./scripts/terminal-signal-witness}
+            '';
+          };
         in
         {
           default = {
@@ -106,11 +118,19 @@
             type = "app";
             program = "${package}/bin/persona-terminal-resolve";
           };
+          signal = {
+            type = "app";
+            program = "${package}/bin/persona-terminal-signal";
+          };
           # This witness allocates a host PTY, so it is an app instead of a
           # pure Nix builder check.
           test-named-session-registry = {
             type = "app";
             program = "${namedSessionRegistryWitness}/bin/persona-terminal-test-named-session-registry";
+          };
+          test-terminal-signal = {
+            type = "app";
+            program = "${terminalSignalWitness}/bin/persona-terminal-test-terminal-signal";
           };
         }
       );

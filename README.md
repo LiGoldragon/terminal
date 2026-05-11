@@ -36,3 +36,16 @@ through the terminal socket.
 socket through the Sema-backed registry, sends input through the resolved
 socket, and captures the transcript artifact. It is a stateful host-PTY witness,
 so it is exposed as a flake app rather than a pure builder check.
+
+## Signal contract witness
+
+`persona-terminal-signal --socket <socket> --terminal <terminal> connect`
+builds a `signal-persona-terminal` request, round-trips it through a
+`signal-core` frame, sends it through the Persona terminal transport binding,
+round-trips the returned event through a `signal-core` reply frame, and prints
+one event line.
+
+`nix run .#test-terminal-signal` starts a real terminal-cell-backed
+`persona-terminal-daemon`, resolves the terminal socket from the Sema-backed
+registry, sends a `TerminalInput` request through `persona-terminal-signal`,
+and captures the resulting transcript with a `TerminalCapture` request.

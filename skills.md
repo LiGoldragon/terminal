@@ -17,6 +17,9 @@ Rules for work here:
 - Keep harness processes durable. Closing a viewer must not kill the child
   harness process.
 - Keep Persona message semantics out of this repo.
+- Keep `persona-harness` as a sibling client over
+  `signal-persona-terminal`; do not fold terminal ownership into the harness
+  abstraction.
 - Keep attached keyboard input as a raw byte path. Control behavior uses typed
   socket or Signal requests; it does not use a prefix-key grammar in the hot
   input path.

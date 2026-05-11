@@ -2,6 +2,7 @@ pub mod contract;
 pub mod error;
 pub mod pty;
 pub mod registry;
+pub mod signal_cli;
 pub mod tables;
 
 pub use error::{Error, Result};

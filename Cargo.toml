@@ -39,11 +39,16 @@ path = "src/bin/persona-terminal-sessions.rs"
 name = "persona-terminal-resolve"
 path = "src/bin/persona-terminal-resolve.rs"
 
+[[bin]]
+name = "persona-terminal-signal"
+path = "src/bin/persona-terminal-signal.rs"
+
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
+signal-core  = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-hook  = "0.3"
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }

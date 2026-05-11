@@ -10,6 +10,12 @@ pub enum Error {
     #[error("sema: {0}")]
     Sema(#[from] sema::Error),
 
+    #[error("signal frame: {0}")]
+    SignalFrame(#[from] signal_core::FrameError),
+
+    #[error("invalid argument: {detail}")]
+    InvalidArgument { detail: String },
+
     #[error("unknown terminal session: {terminal}")]
     UnknownTerminalSession { terminal: String },
 

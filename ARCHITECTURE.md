@@ -42,6 +42,7 @@ flowchart LR
 - durable PTY daemon binary;
 - visible viewer binary;
 - raw input sender binary;
+- signal terminal request client;
 - output scrollback replay;
 - resize propagation;
 - terminal-cell socket adapter;
@@ -66,6 +67,13 @@ the terminal-cell socket is bound. The `persona-terminal-sessions` and
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
 
+`persona-terminal-signal` is the current contract witness client. It constructs
+`signal-persona-terminal` requests, round-trips them through `signal-core`
+frames, sends them through the Persona terminal transport binding, and renders
+the resulting terminal event. It is not the future long-lived supervisor socket;
+it is the first executable witness that the contract can drive a
+terminal-cell-backed daemon.
+
 ## 3 · Boundaries
 
 This repo owns:
@@ -85,6 +93,10 @@ This repo does not own:
 - harness provider-usage interpretation (`persona-harness`);
 - OS focus policy (`persona-system`);
 - authorization.
+
+`persona-harness` is a sibling engine component and a client of this repo's
+terminal contract. `persona-terminal` is not a subcomponent of harness; the
+engine manager supervises both and pushes their peer socket paths at spawn.
 
 Production registry state lives in `persona-terminal`'s component Sema, not in
 viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
@@ -143,6 +155,11 @@ of truth.
   back with the session inspection CLI, and prove the socket path came from the
   Sema table. The flake exposes this stateful witness as
   `nix run .#test-named-session-registry`.
+- Signal-to-terminal-cell: start a real terminal-cell-backed daemon, resolve
+  its named socket from Sema, send `TerminalConnection`, `TerminalInput`, and
+  `TerminalCapture` through the `signal-persona-terminal` adapter, and prove
+  captured bytes came from the child PTY. The flake exposes this stateful
+  witness as `nix run .#test-terminal-signal`.
 
 ## 6 · Invariants
 
@@ -164,7 +181,9 @@ src/bin/persona-terminal-view.rs    viewer entry
 src/bin/persona-terminal-send.rs    raw input sender
 src/bin/persona-terminal-sessions.rs read-only session inspection
 src/bin/persona-terminal-resolve.rs  read-only session name resolver
+src/bin/persona-terminal-signal.rs   signal terminal request client
 scripts/named-session-registry-witness stateful named-session witness
+scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness
 ```
 
 ## See Also
