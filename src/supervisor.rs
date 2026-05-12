@@ -8,8 +8,8 @@ use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_core::{FrameBody, Reply, Request};
 use signal_persona_terminal::{
-    Frame as TerminalFrame, TerminalEvent, TerminalName, TerminalOperationKind, TerminalRejected,
-    TerminalRejectionReason, TerminalRequest,
+    Frame as TerminalFrame, SubscribeTerminalWorkerLifecycle, TerminalEvent, TerminalName,
+    TerminalOperationKind, TerminalRejected, TerminalRejectionReason, TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
@@ -79,6 +79,9 @@ impl TerminalSupervisorDaemon {
     ) -> Result<TerminalEvent> {
         let mut connection = TerminalSupervisorConnection::from_stream(stream);
         let request = connection.read_signal_request()?;
+        if let TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) = request {
+            return Self::handle_subscription(runtime, supervisor, connection, subscription);
+        }
         let event = runtime.block_on(async {
             supervisor
                 .ask(TerminalSupervisorRequest::new(request))
@@ -89,6 +92,71 @@ impl TerminalSupervisorDaemon {
         })?;
         connection.write_signal_event(event.clone())?;
         Ok(event)
+    }
+
+    fn handle_subscription(
+        runtime: &tokio::runtime::Runtime,
+        supervisor: &ActorRef<TerminalSupervisor>,
+        mut client: TerminalSupervisorConnection,
+        subscription: SubscribeTerminalWorkerLifecycle,
+    ) -> Result<TerminalEvent> {
+        let start = runtime.block_on(async {
+            supervisor
+                .ask(TerminalSupervisorSubscriptionRequest::new(subscription))
+                .await
+                .map_err(|error| Error::ActorCall {
+                    detail: error.to_string(),
+                })
+        })?;
+        match start {
+            TerminalSupervisorSubscriptionStart::Immediate(event) => {
+                client.write_signal_event(event.clone())?;
+                Ok(event)
+            }
+            TerminalSupervisorSubscriptionStart::Stream(plan) => {
+                Self::stream_subscription(runtime, supervisor, client, plan)
+            }
+        }
+    }
+
+    fn stream_subscription(
+        runtime: &tokio::runtime::Runtime,
+        supervisor: &ActorRef<TerminalSupervisor>,
+        mut client: TerminalSupervisorConnection,
+        plan: TerminalSupervisorSubscriptionPlan,
+    ) -> Result<TerminalEvent> {
+        let mut cell = BufReader::new(UnixStream::connect(plan.socket_path())?);
+        let codec = TerminalSupervisorFrameCodec::default();
+        codec.write_request(
+            cell.get_mut(),
+            TerminalRequest::SubscribeTerminalWorkerLifecycle(plan.into_subscription()),
+        )?;
+
+        let mut first = None;
+        loop {
+            let event = match codec.read_event(&mut cell) {
+                Ok(event) => event,
+                Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    break;
+                }
+                Err(error) => return Err(error),
+            };
+            runtime.block_on(async {
+                supervisor
+                    .ask(TerminalSupervisorObservedEvent::new(event.clone()))
+                    .await
+                    .map_err(|error| Error::ActorCall {
+                        detail: error.to_string(),
+                    })
+            })?;
+            if first.is_none() {
+                first = Some(event.clone());
+            }
+            client.write_signal_event(event)?;
+        }
+        first.ok_or_else(|| Error::UnexpectedSignalFrame {
+            got: "subscription ended before initial state".to_string(),
+        })
     }
 }
 
@@ -222,6 +290,7 @@ impl Default for TerminalSupervisorFrameCodec {
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct TerminalSupervisorState {
     pub served_request_count: u64,
+    pub recorded_event_count: u64,
     pub last_operation: Option<TerminalOperationKind>,
 }
 
@@ -229,6 +298,7 @@ pub struct TerminalSupervisorState {
 pub struct TerminalSupervisor {
     store: StoreLocation,
     served_request_count: u64,
+    recorded_event_count: u64,
     last_operation: Option<TerminalOperationKind>,
 }
 
@@ -237,6 +307,7 @@ impl TerminalSupervisor {
         Self {
             store,
             served_request_count: 0,
+            recorded_event_count: 0,
             last_operation: None,
         }
     }
@@ -261,11 +332,16 @@ impl TerminalSupervisor {
     fn state(&self) -> TerminalSupervisorState {
         TerminalSupervisorState {
             served_request_count: self.served_request_count,
+            recorded_event_count: self.recorded_event_count,
             last_operation: self.last_operation,
         }
     }
 
-    fn event_for_request(&self, sequence: u64, request: TerminalRequest) -> Result<TerminalEvent> {
+    fn event_for_request(
+        &mut self,
+        sequence: u64,
+        request: TerminalRequest,
+    ) -> Result<TerminalEvent> {
         let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&StoredDeliveryAttempt::started(
@@ -274,27 +350,58 @@ impl TerminalSupervisor {
             request.operation_kind(),
         ))?;
         let Some(session) = tables.session(&terminal)? else {
-            let event = TerminalRejected {
+            let event: TerminalEvent = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
             .into();
-            tables.put_terminal_event(&StoredTerminalEvent::new(
-                sequence,
-                TerminalRequestTerminal::from_event(&event).into_terminal(),
-                event.clone(),
-            ))?;
+            self.record_terminal_event(&tables, event.clone())?;
             return Ok(event);
         };
         let mut binding =
             TerminalTransportBinding::from_socket_path(terminal, session.socket_path());
         let event = binding.handle_request(request)?;
-        tables.put_terminal_event(&StoredTerminalEvent::new(
-            sequence,
-            TerminalRequestTerminal::from_event(&event).into_terminal(),
-            event.clone(),
-        ))?;
+        self.record_terminal_event(&tables, event.clone())?;
         Ok(event)
+    }
+
+    fn subscription_start(
+        &mut self,
+        sequence: u64,
+        subscription: SubscribeTerminalWorkerLifecycle,
+    ) -> Result<TerminalSupervisorSubscriptionStart> {
+        let terminal = subscription.terminal.clone();
+        let tables = TerminalTables::open(&self.store)?;
+        tables.put_delivery_attempt(&StoredDeliveryAttempt::started(
+            sequence,
+            terminal.clone(),
+            TerminalOperationKind::SubscribeTerminalWorkerLifecycle,
+        ))?;
+        let Some(session) = tables.session(&terminal)? else {
+            let event: TerminalEvent = TerminalRejected {
+                terminal,
+                reason: TerminalRejectionReason::NotConnected,
+            }
+            .into();
+            self.record_terminal_event(&tables, event.clone())?;
+            return Ok(TerminalSupervisorSubscriptionStart::Immediate(event));
+        };
+        Ok(TerminalSupervisorSubscriptionStart::Stream(
+            TerminalSupervisorSubscriptionPlan::new(subscription, session.socket_path()),
+        ))
+    }
+
+    fn record_terminal_event(
+        &mut self,
+        tables: &TerminalTables,
+        event: TerminalEvent,
+    ) -> Result<()> {
+        self.recorded_event_count = self.recorded_event_count.saturating_add(1);
+        tables.put_terminal_event(&StoredTerminalEvent::new(
+            self.recorded_event_count,
+            TerminalRequestTerminal::from_event(&event).into_terminal(),
+            event,
+        ))
     }
 }
 
@@ -359,6 +466,85 @@ impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
         self.last_operation = Some(message.request.operation_kind());
         self.served_request_count = sequence;
         self.event_for_request(sequence, message.request)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorSubscriptionRequest {
+    subscription: SubscribeTerminalWorkerLifecycle,
+}
+
+impl TerminalSupervisorSubscriptionRequest {
+    pub fn new(subscription: SubscribeTerminalWorkerLifecycle) -> Self {
+        Self { subscription }
+    }
+}
+
+impl Message<TerminalSupervisorSubscriptionRequest> for TerminalSupervisor {
+    type Reply = Result<TerminalSupervisorSubscriptionStart>;
+
+    async fn handle(
+        &mut self,
+        message: TerminalSupervisorSubscriptionRequest,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let sequence = self.served_request_count.saturating_add(1);
+        self.last_operation = Some(TerminalOperationKind::SubscribeTerminalWorkerLifecycle);
+        self.served_request_count = sequence;
+        self.subscription_start(sequence, message.subscription)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorObservedEvent {
+    event: TerminalEvent,
+}
+
+impl TerminalSupervisorObservedEvent {
+    pub fn new(event: TerminalEvent) -> Self {
+        Self { event }
+    }
+}
+
+impl Message<TerminalSupervisorObservedEvent> for TerminalSupervisor {
+    type Reply = Result<()>;
+
+    async fn handle(
+        &mut self,
+        message: TerminalSupervisorObservedEvent,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let tables = TerminalTables::open(&self.store)?;
+        self.record_terminal_event(&tables, message.event)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminalSupervisorSubscriptionStart {
+    Immediate(TerminalEvent),
+    Stream(TerminalSupervisorSubscriptionPlan),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorSubscriptionPlan {
+    subscription: SubscribeTerminalWorkerLifecycle,
+    socket_path: PathBuf,
+}
+
+impl TerminalSupervisorSubscriptionPlan {
+    pub fn new(subscription: SubscribeTerminalWorkerLifecycle, socket_path: PathBuf) -> Self {
+        Self {
+            subscription,
+            socket_path,
+        }
+    }
+
+    pub fn socket_path(&self) -> &PathBuf {
+        &self.socket_path
+    }
+
+    pub fn into_subscription(self) -> SubscribeTerminalWorkerLifecycle {
+        self.subscription
     }
 }
 
@@ -472,9 +658,12 @@ impl TerminalSupervisorArguments {
     }
 
     fn into_daemon(self) -> Result<TerminalSupervisorDaemon> {
-        let socket = self.socket.ok_or(Error::MissingSocket {
-            component: "persona-terminal-supervisor",
-        })?;
+        let socket = self
+            .socket
+            .or_else(|| std::env::var_os("PERSONA_SOCKET_PATH").map(PathBuf::from))
+            .ok_or(Error::MissingSocket {
+                component: "persona-terminal-supervisor",
+            })?;
         Ok(TerminalSupervisorDaemon::from_socket(socket).with_store(self.store))
     }
 }

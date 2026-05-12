@@ -139,10 +139,17 @@ of truth.
 - The supervisor socket resolves terminal names through component Sema before
   terminal effects. Callers send `signal-persona-terminal` frames to
   `persona-terminal`, not directly to stored terminal-cell sockets.
+- The supervisor binary accepts explicit `--socket` / `--store` overrides for
+  tests, but the engine path is the Persona spawn envelope:
+  `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
 - Supervisor-request state is committed around the terminal effect:
   `delivery_attempts` before forwarding, `terminal_events` after the typed
   event returns. Viewer attachments, session health, and session archive records
   are first-class component Sema tables.
+- Subscription requests are streams, not one-shot lookups. The supervisor
+  resolves the named terminal once, forwards the typed subscription frame to
+  the registered terminal socket, relays the initial state and each live delta,
+  and records every typed event it observes.
 - Programmatic input and viewer keyboard input enter through the same terminal
   input port and produce the same accepted/rejected terminal event shape.
 - Harness slash-command usage probes are harness-adapter behavior. The terminal
@@ -199,6 +206,13 @@ of truth.
   attempt and terminal event, and returns the typed terminal event. The flake
   exposes this as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
+- Supervisor subscription routing: send
+  `SubscribeTerminalWorkerLifecycle` to the supervisor socket, prove it records
+  the attempt, relays an initial lifecycle snapshot and a following lifecycle
+  delta from the registered terminal socket, and persists both typed events.
+- Spawn-envelope startup: construct `persona-terminal-supervisor` without CLI
+  path arguments and prove it resolves its socket and component Sema path from
+  `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
 - T6 table coverage: write and read `delivery_attempts`, `terminal_events`,
   `viewer_attachments`, `session_health`, and `session_archive` through
   `TerminalTables`; the default flake check runs this witness.

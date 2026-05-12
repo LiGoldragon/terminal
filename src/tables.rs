@@ -31,7 +31,10 @@ impl StoreLocation {
     pub fn from_environment() -> Self {
         match std::env::var_os("PERSONA_TERMINAL_STORE") {
             Some(path) => Self::new(path),
-            None => Self::new("/tmp/persona-terminal.redb"),
+            None => match std::env::var_os("PERSONA_STATE_PATH") {
+                Some(path) => Self::new(path),
+                None => Self::new("/tmp/persona-terminal.redb"),
+            },
         }
     }
 

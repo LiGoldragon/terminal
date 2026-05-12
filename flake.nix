@@ -195,6 +195,21 @@
               cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_socket_routes_through_component_sema";
             }
           );
+          terminal-supervisor-subscription-streams-initial-state-then-delta =
+            context.craneLib.cargoTest (
+              context.commonArgs
+              // {
+                inherit (context) cargoArtifacts;
+                cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_subscription_streams_initial_state_then_delta";
+              }
+            );
+          terminal-supervisor-uses-spawn-envelope-environment = context.craneLib.cargoTest (
+            context.commonArgs
+            // {
+              inherit (context) cargoArtifacts;
+              cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_command_line_uses_spawn_envelope_environment";
+            }
+          );
         }
       );
 
