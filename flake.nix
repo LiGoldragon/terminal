@@ -151,6 +151,10 @@
             type = "app";
             program = "${package}/bin/persona-terminal-signal";
           };
+          supervisor = {
+            type = "app";
+            program = "${package}/bin/persona-terminal-supervisor";
+          };
           # This witness allocates a host PTY, so it is an app instead of a
           # pure Nix builder check.
           test-named-session-registry = {
@@ -182,6 +186,13 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
+            }
+          );
+          terminal-supervisor-socket-routes-through-component-sema = context.craneLib.cargoTest (
+            context.commonArgs
+            // {
+              inherit (context) cargoArtifacts;
+              cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_socket_routes_through_component_sema";
             }
           );
         }

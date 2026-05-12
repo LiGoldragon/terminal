@@ -43,6 +43,10 @@ path = "src/bin/persona-terminal-resolve.rs"
 name = "persona-terminal-signal"
 path = "src/bin/persona-terminal-signal.rs"
 
+[[bin]]
+name = "persona-terminal-supervisor"
+path = "src/bin/persona-terminal-supervisor.rs"
+
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }

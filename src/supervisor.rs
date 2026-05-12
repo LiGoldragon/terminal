@@ -1,0 +1,437 @@
+use std::ffi::OsString;
+use std::io::{BufReader, Read, Write};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
+
+use kameo::actor::{Actor, ActorRef, Spawn};
+use kameo::error::Infallible;
+use kameo::message::{Context, Message};
+use signal_core::{FrameBody, Reply, Request};
+use signal_persona_terminal::{
+    Frame as TerminalFrame, TerminalEvent, TerminalName, TerminalOperationKind, TerminalRejected,
+    TerminalRejectionReason, TerminalRequest,
+};
+
+use crate::contract::TerminalTransportBinding;
+use crate::error::{Error, Result};
+use crate::tables::{StoreLocation, TerminalTables};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorDaemon {
+    socket: PathBuf,
+    store: StoreLocation,
+}
+
+impl TerminalSupervisorDaemon {
+    pub fn from_socket(socket: impl Into<PathBuf>) -> Self {
+        Self {
+            socket: socket.into(),
+            store: StoreLocation::from_environment(),
+        }
+    }
+
+    pub fn with_store(mut self, store: StoreLocation) -> Self {
+        self.store = store;
+        self
+    }
+
+    pub fn socket(&self) -> &PathBuf {
+        &self.socket
+    }
+
+    pub fn store(&self) -> &StoreLocation {
+        &self.store
+    }
+
+    pub fn run(self) -> Result<()> {
+        let bound = self.bind()?;
+        eprintln!(
+            "persona-terminal-supervisor socket={}",
+            bound.socket.display()
+        );
+        bound.serve_forever()
+    }
+
+    pub fn bind(self) -> Result<BoundTerminalSupervisorDaemon> {
+        if let Some(parent) = self.socket.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let _ = std::fs::remove_file(&self.socket);
+        let listener = UnixListener::bind(&self.socket)?;
+        let runtime = tokio::runtime::Runtime::new()?;
+        let supervisor = runtime.block_on(TerminalSupervisor::start(self.store));
+        Ok(BoundTerminalSupervisorDaemon {
+            socket: self.socket,
+            runtime,
+            listener,
+            supervisor,
+        })
+    }
+
+    pub fn serve_one(self) -> Result<TerminalEvent> {
+        self.bind()?.serve_one()
+    }
+
+    fn handle_connection(
+        runtime: &tokio::runtime::Runtime,
+        supervisor: &ActorRef<TerminalSupervisor>,
+        stream: UnixStream,
+    ) -> Result<TerminalEvent> {
+        let mut connection = TerminalSupervisorConnection::from_stream(stream);
+        let request = connection.read_signal_request()?;
+        let event = runtime.block_on(async {
+            supervisor
+                .ask(TerminalSupervisorRequest::new(request))
+                .await
+                .map_err(|error| Error::ActorCall {
+                    detail: error.to_string(),
+                })
+        })?;
+        connection.write_signal_event(event.clone())?;
+        Ok(event)
+    }
+}
+
+pub struct BoundTerminalSupervisorDaemon {
+    socket: PathBuf,
+    runtime: tokio::runtime::Runtime,
+    listener: UnixListener,
+    supervisor: ActorRef<TerminalSupervisor>,
+}
+
+impl BoundTerminalSupervisorDaemon {
+    pub fn socket(&self) -> &PathBuf {
+        &self.socket
+    }
+
+    pub fn serve_one(self) -> Result<TerminalEvent> {
+        let (stream, _address) = self.listener.accept()?;
+        let event =
+            TerminalSupervisorDaemon::handle_connection(&self.runtime, &self.supervisor, stream)?;
+        self.runtime
+            .block_on(TerminalSupervisor::stop(self.supervisor))?;
+        let _ = std::fs::remove_file(&self.socket);
+        Ok(event)
+    }
+
+    pub fn serve_forever(self) -> Result<()> {
+        for stream in self.listener.incoming() {
+            let stream = stream?;
+            let _ = TerminalSupervisorDaemon::handle_connection(
+                &self.runtime,
+                &self.supervisor,
+                stream,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+pub struct TerminalSupervisorConnection {
+    stream: BufReader<UnixStream>,
+    signal: TerminalSupervisorFrameCodec,
+}
+
+impl TerminalSupervisorConnection {
+    pub fn from_stream(stream: UnixStream) -> Self {
+        Self {
+            stream: BufReader::new(stream),
+            signal: TerminalSupervisorFrameCodec::default(),
+        }
+    }
+
+    pub fn read_signal_request(&mut self) -> Result<TerminalRequest> {
+        self.signal.read_request(&mut self.stream)
+    }
+
+    pub fn write_signal_event(&mut self, event: TerminalEvent) -> Result<()> {
+        let stream = self.stream.get_mut();
+        self.signal.write_event(stream, event)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalSupervisorFrameCodec {
+    maximum_frame_bytes: usize,
+}
+
+impl TerminalSupervisorFrameCodec {
+    pub const fn new(maximum_frame_bytes: usize) -> Self {
+        Self {
+            maximum_frame_bytes,
+        }
+    }
+
+    pub fn read_frame(&self, reader: &mut impl Read) -> Result<TerminalFrame> {
+        let mut prefix = [0_u8; 4];
+        reader.read_exact(&mut prefix)?;
+        let length = u32::from_be_bytes(prefix) as usize;
+        if length > self.maximum_frame_bytes {
+            return Err(Error::UnexpectedSignalFrame {
+                got: format!("frame length {length} exceeds {}", self.maximum_frame_bytes),
+            });
+        }
+        let mut bytes = Vec::with_capacity(4 + length);
+        bytes.extend_from_slice(&prefix);
+        bytes.resize(4 + length, 0);
+        reader.read_exact(&mut bytes[4..])?;
+        Ok(TerminalFrame::decode_length_prefixed(&bytes)?)
+    }
+
+    pub fn read_request(&self, reader: &mut impl Read) -> Result<TerminalRequest> {
+        match self.read_frame(reader)?.into_body() {
+            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
+            other => Err(Error::UnexpectedSignalFrame {
+                got: format!("{other:?}"),
+            }),
+        }
+    }
+
+    pub fn write_request(&self, writer: &mut impl Write, request: TerminalRequest) -> Result<()> {
+        let frame = TerminalFrame::new(FrameBody::Request(Request::assert(request)));
+        let bytes = frame.encode_length_prefixed()?;
+        writer.write_all(&bytes)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    pub fn write_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
+        let frame = TerminalFrame::new(FrameBody::Reply(Reply::operation(event)));
+        let bytes = frame.encode_length_prefixed()?;
+        writer.write_all(&bytes)?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalEvent> {
+        match self.read_frame(reader)?.into_body() {
+            FrameBody::Reply(Reply::Operation(event)) => Ok(event),
+            other => Err(Error::UnexpectedSignalFrame {
+                got: format!("{other:?}"),
+            }),
+        }
+    }
+}
+
+impl Default for TerminalSupervisorFrameCodec {
+    fn default() -> Self {
+        Self::new(1024 * 1024)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
+pub struct TerminalSupervisorState {
+    pub served_request_count: u64,
+    pub last_operation: Option<TerminalOperationKind>,
+}
+
+#[derive(Debug)]
+pub struct TerminalSupervisor {
+    store: StoreLocation,
+    served_request_count: u64,
+    last_operation: Option<TerminalOperationKind>,
+}
+
+impl TerminalSupervisor {
+    pub fn new(store: StoreLocation) -> Self {
+        Self {
+            store,
+            served_request_count: 0,
+            last_operation: None,
+        }
+    }
+
+    pub async fn start(store: StoreLocation) -> ActorRef<Self> {
+        let reference = Self::spawn(store);
+        reference.wait_for_startup().await;
+        reference
+    }
+
+    pub async fn stop(reference: ActorRef<Self>) -> Result<()> {
+        reference
+            .stop_gracefully()
+            .await
+            .map_err(|error| Error::ActorCall {
+                detail: error.to_string(),
+            })?;
+        reference.wait_for_shutdown().await;
+        Ok(())
+    }
+
+    fn state(&self) -> TerminalSupervisorState {
+        TerminalSupervisorState {
+            served_request_count: self.served_request_count,
+            last_operation: self.last_operation,
+        }
+    }
+
+    fn event_for_request(&self, request: TerminalRequest) -> Result<TerminalEvent> {
+        let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
+        let Some(session) = TerminalTables::open(&self.store)?.session(&terminal)? else {
+            return Ok(TerminalRejected {
+                terminal,
+                reason: TerminalRejectionReason::NotConnected,
+            }
+            .into());
+        };
+        let mut binding =
+            TerminalTransportBinding::from_socket_path(terminal, session.socket_path());
+        binding.handle_request(request)
+    }
+}
+
+impl Actor for TerminalSupervisor {
+    type Args = StoreLocation;
+    type Error = Infallible;
+
+    async fn on_start(
+        store: Self::Args,
+        _actor_reference: ActorRef<Self>,
+    ) -> std::result::Result<Self, Self::Error> {
+        Ok(Self::new(store))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadTerminalSupervisorState {
+    pub minimum_served_request_count: u64,
+}
+
+impl ReadTerminalSupervisorState {
+    pub const fn expecting_at_least(minimum_served_request_count: u64) -> Self {
+        Self {
+            minimum_served_request_count,
+        }
+    }
+}
+
+impl Message<ReadTerminalSupervisorState> for TerminalSupervisor {
+    type Reply = TerminalSupervisorState;
+
+    async fn handle(
+        &mut self,
+        message: ReadTerminalSupervisorState,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        let _satisfied = self.served_request_count >= message.minimum_served_request_count;
+        self.state()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorRequest {
+    request: TerminalRequest,
+}
+
+impl TerminalSupervisorRequest {
+    pub fn new(request: TerminalRequest) -> Self {
+        Self { request }
+    }
+}
+
+impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
+    type Reply = Result<TerminalEvent>;
+
+    async fn handle(
+        &mut self,
+        message: TerminalSupervisorRequest,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.last_operation = Some(message.request.operation_kind());
+        self.served_request_count = self.served_request_count.saturating_add(1);
+        self.event_for_request(message.request)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TerminalRequestTerminal {
+    terminal: TerminalName,
+}
+
+impl TerminalRequestTerminal {
+    fn from_request(request: &TerminalRequest) -> Self {
+        let terminal = match request {
+            TerminalRequest::TerminalConnection(payload) => payload.terminal.clone(),
+            TerminalRequest::TerminalInput(payload) => payload.terminal.clone(),
+            TerminalRequest::TerminalResize(payload) => payload.terminal.clone(),
+            TerminalRequest::TerminalDetachment(payload) => payload.terminal.clone(),
+            TerminalRequest::TerminalCapture(payload) => payload.terminal.clone(),
+            TerminalRequest::RegisterPromptPattern(payload) => payload.terminal.clone(),
+            TerminalRequest::UnregisterPromptPattern(payload) => payload.terminal.clone(),
+            TerminalRequest::ListPromptPatterns(payload) => payload.terminal.clone(),
+            TerminalRequest::AcquireInputGate(payload) => payload.terminal.clone(),
+            TerminalRequest::ReleaseInputGate(payload) => payload.terminal.clone(),
+            TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
+            TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
+        };
+        Self { terminal }
+    }
+
+    fn into_terminal(self) -> TerminalName {
+        self.terminal
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorCommandLine {
+    arguments: Vec<OsString>,
+}
+
+impl TerminalSupervisorCommandLine {
+    pub fn from_environment() -> Self {
+        Self::from_arguments(std::env::args_os().skip(1))
+    }
+
+    pub fn from_arguments<I, S>(arguments: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
+        Self {
+            arguments: arguments.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    pub fn daemon(&self) -> Result<TerminalSupervisorDaemon> {
+        TerminalSupervisorArguments::from_arguments(self.arguments.clone()).into_daemon()
+    }
+
+    pub fn run(&self) -> Result<()> {
+        self.daemon()?.run()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TerminalSupervisorArguments {
+    socket: Option<PathBuf>,
+    store: StoreLocation,
+}
+
+impl TerminalSupervisorArguments {
+    fn from_arguments(arguments: impl IntoIterator<Item = OsString>) -> Self {
+        let mut socket = None;
+        let mut store = None;
+        let mut iterator = arguments.into_iter();
+
+        while let Some(argument) = iterator.next() {
+            match argument.to_string_lossy().as_ref() {
+                "--socket" => socket = iterator.next().map(PathBuf::from),
+                "--store" => store = iterator.next().map(StoreLocation::new),
+                value if socket.is_none() => socket = Some(PathBuf::from(value)),
+                _ => {}
+            }
+        }
+
+        Self {
+            socket,
+            store: store.unwrap_or_else(StoreLocation::from_environment),
+        }
+    }
+
+    fn into_daemon(self) -> Result<TerminalSupervisorDaemon> {
+        let socket = self.socket.ok_or(Error::MissingSocket {
+            component: "persona-terminal-supervisor",
+        })?;
+        Ok(TerminalSupervisorDaemon::from_socket(socket).with_store(self.store))
+    }
+}

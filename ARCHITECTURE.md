@@ -70,11 +70,14 @@ Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
 
 `persona-terminal-signal` is the current contract witness client. It constructs
-`signal-persona-terminal` requests, round-trips them through `signal-core`
-frames, sends them through the Persona terminal transport binding, and renders
-the resulting terminal event. It is not the future long-lived supervisor socket;
-it is the first executable witness that the contract can drive a
-terminal-cell-backed daemon.
+`signal-persona-terminal` requests, sends them as length-prefixed Signal frames
+to a terminal control socket, and renders the resulting terminal event.
+
+`persona-terminal-supervisor` is the engine-facing supervisor socket. It accepts
+the same `signal-persona-terminal` frames, resolves named terminal sessions from
+the component Sema registry, and forwards terminal work to the registered
+terminal-cell socket. This keeps callers on the Persona-facing component
+boundary instead of giving them terminal-cell socket paths.
 
 `TerminalSignalControl` is the first Kameo actor in this repo's supervisor
 direction. It owns prompt-pattern registry state, signal input-gate leases,
@@ -133,6 +136,9 @@ of truth.
 - Named terminal sessions are component state. The daemon records them through
   `persona-terminal`'s component Sema; no registry JSON, text manifest, or
   viewer-specific state file is the source of truth.
+- The supervisor socket resolves terminal names through component Sema before
+  terminal effects. Callers send `signal-persona-terminal` frames to
+  `persona-terminal`, not directly to stored terminal-cell sockets.
 - Programmatic input and viewer keyboard input enter through the same terminal
   input port and produce the same accepted/rejected terminal event shape.
 - Harness slash-command usage probes are harness-adapter behavior. The terminal
@@ -183,6 +189,11 @@ of truth.
 - Actor-owned signal control: the pure test suite asserts
   `TerminalSignalControl` is a Kameo actor with typed messages and that
   production terminal-control state does not use shared `Arc<Mutex<_>>` state.
+- Supervisor socket routing: send one `signal-persona-terminal` request to the
+  supervisor socket, prove it resolves the named session through component Sema,
+  forwards the frame to the registered terminal socket, and returns the typed
+  terminal event. The flake exposes this as
+  `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
 
 ## 6 · Invariants
 
@@ -198,6 +209,7 @@ of truth.
 src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-persona-terminal adapter
 src/signal_control.rs              Kameo actor for prompt/gate/injection control state
+src/supervisor.rs                  engine-facing Signal supervisor socket
 src/tables.rs                      component Sema tables for named sessions
 src/registry.rs                    session registration + inspection clients
 src/bin/persona-terminal-daemon.rs  daemon entry
@@ -206,6 +218,7 @@ src/bin/persona-terminal-send.rs    raw input sender
 src/bin/persona-terminal-sessions.rs read-only session inspection
 src/bin/persona-terminal-resolve.rs  read-only session name resolver
 src/bin/persona-terminal-signal.rs   signal terminal request client
+src/bin/persona-terminal-supervisor.rs supervisor socket entry
 scripts/named-session-registry-witness stateful named-session witness
 scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness
 scripts/gate-cache-witness           stateful gate-and-cache injection witness

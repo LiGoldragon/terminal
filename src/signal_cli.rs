@@ -15,7 +15,7 @@ use signal_persona_terminal::{
     TerminalWorkerLifecycleSnapshot, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
-use crate::contract::TerminalTransportBinding;
+use crate::pty::TerminalSocket;
 use crate::{Error, Result};
 
 const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
@@ -46,11 +46,9 @@ impl TerminalSignalRequest {
     }
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
-        let mut binding =
-            TerminalTransportBinding::from_socket_path(self.terminal.clone(), self.socket);
         let request = self.operation.into_request(self.terminal);
         let framed_request = TerminalSignalRequestFrame::new(request).into_request()?;
-        let event = binding.handle_request(framed_request)?;
+        let event = TerminalSocket::from_path(self.socket).signal(framed_request)?;
         let framed_event = TerminalSignalEventFrame::new(event).into_event()?;
         TerminalEventLine::new(framed_event).write_to(&mut output)?;
         output.flush()?;

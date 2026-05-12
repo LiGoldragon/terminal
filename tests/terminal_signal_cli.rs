@@ -1,10 +1,78 @@
+use std::fs;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
+use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use persona_terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
-use signal_persona_terminal::TerminalName;
+use persona_terminal::supervisor::TerminalSupervisorFrameCodec;
+use signal_persona_terminal::{TerminalConnection, TerminalEvent, TerminalName, TerminalReady};
+
+struct SignalFixture {
+    root: PathBuf,
+}
+
+impl SignalFixture {
+    fn new(name: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "pt-sig-{name}-{}-{}",
+            std::process::id(),
+            Self::stamp()
+        ));
+        fs::create_dir_all(&root).expect("signal fixture directory is created");
+        Self { root }
+    }
+
+    fn stamp() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is after epoch")
+            .as_nanos()
+    }
+
+    fn socket(&self) -> PathBuf {
+        self.root.join("signal.sock")
+    }
+}
+
+impl Drop for SignalFixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
 
 #[test]
-fn terminal_signal_cli_connect_round_trips_request_and_event_frames() {
+fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
+    let fixture = SignalFixture::new("connect-crosses-socket");
+    let listener = UnixListener::bind(fixture.socket()).expect("fake signal socket binds");
+    let server = thread::spawn(move || {
+        let (stream, _address) = listener.accept().expect("client connects");
+        let mut stream = std::io::BufReader::new(stream);
+        let codec = TerminalSupervisorFrameCodec::default();
+        let request = codec
+            .read_request(&mut stream)
+            .expect("client writes signal request");
+        assert_eq!(
+            request,
+            TerminalConnection {
+                terminal: TerminalName::new("operator")
+            }
+            .into()
+        );
+        let stream: &mut UnixStream = stream.get_mut();
+        codec
+            .write_event(
+                stream,
+                TerminalEvent::from(TerminalReady {
+                    terminal: TerminalName::new("operator"),
+                    generation: signal_persona_terminal::TerminalGeneration::new(1),
+                }),
+            )
+            .expect("server writes signal event");
+    });
+
     let request = TerminalSignalRequest::new(
-        "/tmp/persona-terminal-missing.sock",
+        fixture.socket(),
         TerminalName::new("operator"),
         TerminalSignalOperation::Connect,
     );
@@ -18,4 +86,5 @@ fn terminal_signal_cli_connect_round_trips_request_and_event_frames() {
         String::from_utf8(output).expect("event line is utf8"),
         "TerminalReady\toperator\t1\n"
     );
+    server.join().expect("fake server joins");
 }

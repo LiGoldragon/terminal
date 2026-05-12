@@ -13,8 +13,17 @@ pub enum Error {
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 
+    #[error("actor call: {detail}")]
+    ActorCall { detail: String },
+
     #[error("invalid argument: {detail}")]
     InvalidArgument { detail: String },
+
+    #[error("{component} socket path is missing")]
+    MissingSocket { component: &'static str },
+
+    #[error("unexpected signal frame: {got}")]
+    UnexpectedSignalFrame { got: String },
 
     #[error("unknown terminal session: {terminal}")]
     UnknownTerminalSession { terminal: String },
