@@ -14,7 +14,7 @@ use signal_persona_terminal::{
 
 use crate::contract::TerminalTransportBinding;
 use crate::error::{Error, Result};
-use crate::tables::{StoreLocation, TerminalTables};
+use crate::tables::{StoreLocation, StoredDeliveryAttempt, StoredTerminalEvent, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorDaemon {
@@ -265,18 +265,36 @@ impl TerminalSupervisor {
         }
     }
 
-    fn event_for_request(&self, request: TerminalRequest) -> Result<TerminalEvent> {
+    fn event_for_request(&self, sequence: u64, request: TerminalRequest) -> Result<TerminalEvent> {
         let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
-        let Some(session) = TerminalTables::open(&self.store)?.session(&terminal)? else {
-            return Ok(TerminalRejected {
+        let tables = TerminalTables::open(&self.store)?;
+        tables.put_delivery_attempt(&StoredDeliveryAttempt::started(
+            sequence,
+            terminal.clone(),
+            request.operation_kind(),
+        ))?;
+        let Some(session) = tables.session(&terminal)? else {
+            let event = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
-            .into());
+            .into();
+            tables.put_terminal_event(&StoredTerminalEvent::new(
+                sequence,
+                TerminalRequestTerminal::from_event(&event).into_terminal(),
+                event.clone(),
+            ))?;
+            return Ok(event);
         };
         let mut binding =
             TerminalTransportBinding::from_socket_path(terminal, session.socket_path());
-        binding.handle_request(request)
+        let event = binding.handle_request(request)?;
+        tables.put_terminal_event(&StoredTerminalEvent::new(
+            sequence,
+            TerminalRequestTerminal::from_event(&event).into_terminal(),
+            event.clone(),
+        ))?;
+        Ok(event)
     }
 }
 
@@ -337,9 +355,10 @@ impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
         message: TerminalSupervisorRequest,
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
+        let sequence = self.served_request_count.saturating_add(1);
         self.last_operation = Some(message.request.operation_kind());
-        self.served_request_count = self.served_request_count.saturating_add(1);
-        self.event_for_request(message.request)
+        self.served_request_count = sequence;
+        self.event_for_request(sequence, message.request)
     }
 }
 
@@ -363,6 +382,30 @@ impl TerminalRequestTerminal {
             TerminalRequest::ReleaseInputGate(payload) => payload.terminal.clone(),
             TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
             TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
+        };
+        Self { terminal }
+    }
+
+    fn from_event(event: &TerminalEvent) -> Self {
+        let terminal = match event {
+            TerminalEvent::TerminalReady(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalInputAccepted(payload) => payload.terminal.clone(),
+            TerminalEvent::TranscriptDelta(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalResized(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalCaptured(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalDetached(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalExited(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalRejected(payload) => payload.terminal.clone(),
+            TerminalEvent::PromptPatternRegistered(payload) => payload.terminal.clone(),
+            TerminalEvent::PromptPatternUnregistered(payload) => payload.terminal.clone(),
+            TerminalEvent::PromptPatternList(payload) => payload.terminal.clone(),
+            TerminalEvent::GateAcquired(payload) => payload.terminal.clone(),
+            TerminalEvent::GateBusy(payload) => payload.terminal.clone(),
+            TerminalEvent::GateReleased(payload) => payload.terminal.clone(),
+            TerminalEvent::InjectionAck(payload) => payload.terminal.clone(),
+            TerminalEvent::InjectionRejected(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
+            TerminalEvent::TerminalWorkerLifecycleEvent(payload) => payload.terminal.clone(),
         };
         Self { terminal }
     }

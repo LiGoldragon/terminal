@@ -139,6 +139,10 @@ of truth.
 - The supervisor socket resolves terminal names through component Sema before
   terminal effects. Callers send `signal-persona-terminal` frames to
   `persona-terminal`, not directly to stored terminal-cell sockets.
+- Supervisor-request state is committed around the terminal effect:
+  `delivery_attempts` before forwarding, `terminal_events` after the typed
+  event returns. Viewer attachments, session health, and session archive records
+  are first-class component Sema tables.
 - Programmatic input and viewer keyboard input enter through the same terminal
   input port and produce the same accepted/rejected terminal event shape.
 - Harness slash-command usage probes are harness-adapter behavior. The terminal
@@ -191,9 +195,13 @@ of truth.
   production terminal-control state does not use shared `Arc<Mutex<_>>` state.
 - Supervisor socket routing: send one `signal-persona-terminal` request to the
   supervisor socket, prove it resolves the named session through component Sema,
-  forwards the frame to the registered terminal socket, and returns the typed
-  terminal event. The flake exposes this as
+  forwards the frame to the registered terminal socket, records the delivery
+  attempt and terminal event, and returns the typed terminal event. The flake
+  exposes this as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
+- T6 table coverage: write and read `delivery_attempts`, `terminal_events`,
+  `viewer_attachments`, `session_health`, and `session_archive` through
+  `TerminalTables`; the default flake check runs this witness.
 
 ## 6 · Invariants
 

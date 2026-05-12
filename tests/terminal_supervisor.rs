@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use persona_terminal::registry::SessionRegistration;
 use persona_terminal::supervisor::{TerminalSupervisorDaemon, TerminalSupervisorFrameCodec};
-use persona_terminal::tables::StoreLocation;
+use persona_terminal::tables::{DeliveryAttemptState, StoreLocation, TerminalTables};
 use signal_persona_terminal::{
     PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
     RegisterPromptPattern, TerminalEvent, TerminalName,
@@ -134,6 +134,25 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
     assert_eq!(
         served.join().expect("supervisor server joins"),
         TerminalEvent::from(PromptPatternRegistered {
+            terminal: TerminalName::new("operator"),
+            pattern_id: PromptPatternId::new("from-cell"),
+        })
+    );
+    let tables = TerminalTables::open(&fixture.store()).expect("terminal tables open");
+    let attempts = tables
+        .delivery_attempt_records()
+        .expect("delivery attempts are readable");
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0].terminal(), &TerminalName::new("operator"));
+    assert_eq!(attempts[0].state(), DeliveryAttemptState::Started);
+
+    let events = tables
+        .terminal_event_records()
+        .expect("terminal events are readable");
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].event(),
+        &TerminalEvent::from(PromptPatternRegistered {
             terminal: TerminalName::new("operator"),
             pattern_id: PromptPatternId::new("from-cell"),
         })
