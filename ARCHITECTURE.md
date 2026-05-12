@@ -175,6 +175,11 @@ of truth.
   inject under the lease, release the gate, and prove cached human bytes replay
   afterward. The flake exposes this stateful witness as
   `nix run .#test-gate-cache`.
+- Dirty prompt defers injection: type a human draft before acquiring the gate,
+  acquire with a prompt pattern, observe `PromptState::Dirty`, attempt
+  injection, and prove the bytes are rejected instead of reaching the PTY. The
+  flake exposes this stateful witness as
+  `nix run .#test-dirty-prompt-defers`.
 - Actor-owned signal control: the pure test suite asserts
   `TerminalSignalControl` is a Kameo actor with typed messages and that
   production terminal-control state does not use shared `Arc<Mutex<_>>` state.
@@ -204,6 +209,7 @@ src/bin/persona-terminal-signal.rs   signal terminal request client
 scripts/named-session-registry-witness stateful named-session witness
 scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness
 scripts/gate-cache-witness           stateful gate-and-cache injection witness
+scripts/dirty-prompt-defers-witness  stateful dirty-prompt rejection witness
 ```
 
 ## See Also

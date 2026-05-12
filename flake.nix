@@ -97,6 +97,19 @@
               ${context.pkgs.bash}/bin/bash ${./scripts/gate-cache-witness}
             '';
           };
+          dirtyPromptDefersWitness = context.pkgs.writeShellApplication {
+            name = "persona-terminal-test-dirty-prompt-defers";
+            runtimeInputs = [
+              context.pkgs.coreutils
+              context.pkgs.gawk
+              context.pkgs.gnugrep
+            ];
+            text = ''
+              export PERSONA_TERMINAL_PACKAGE=${package}
+              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              ${context.pkgs.bash}/bin/bash ${./scripts/dirty-prompt-defers-witness}
+            '';
+          };
         in
         {
           default = {
@@ -148,6 +161,10 @@
           test-gate-cache = {
             type = "app";
             program = "${gateCacheWitness}/bin/persona-terminal-test-gate-cache";
+          };
+          test-dirty-prompt-defers = {
+            type = "app";
+            program = "${dirtyPromptDefersWitness}/bin/persona-terminal-test-dirty-prompt-defers";
           };
         }
       );
