@@ -51,6 +51,13 @@ impl SourceTree {
         files.into_iter().map(SourceFile::read).collect()
     }
 
+    fn source_file(&self, path: &[&str]) -> SourceFile {
+        SourceFile::read(
+            path.iter()
+                .fold(self.root.clone(), |root, segment| root.join(segment)),
+        )
+    }
+
     fn rust_files_under(&self, directory: PathBuf) -> Vec<PathBuf> {
         let mut files = Vec::new();
         let entries = fs::read_dir(directory).expect("source directory is readable");
@@ -164,4 +171,32 @@ fn terminal_registry_state_goes_through_component_sema() {
     assert!(tables_source.contains("Table<&'static str, StoredTerminalSession>"));
     assert!(!tables_source.contains("registry.json"));
     assert!(!tables_source.contains("sessions.json"));
+}
+
+#[test]
+fn terminal_signal_control_state_is_owned_by_a_kameo_actor() {
+    let tree = SourceTree::new();
+    let signal_control = tree.source_file(&["src", "signal_control.rs"]);
+    let pty_source = tree.source_file(&["src", "pty.rs"]);
+
+    assert!(signal_control.contains("pub struct TerminalSignalControl"));
+    assert!(signal_control.contains("impl Actor for TerminalSignalControl"));
+    assert!(signal_control.contains("impl Message<TerminalSignalControlRequest>"));
+    assert!(pty_source.contains("TerminalSignalControl::spawn"));
+
+    let mut violations = Vec::new();
+    for file in tree.production_files() {
+        if file.contains("Arc<Mutex") || file.contains("std::sync::Mutex") {
+            violations.push(format!(
+                "{} contains shared lock state instead of actor-owned state",
+                file.path.display()
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "terminal control state must be actor-owned:\n{}",
+        violations.join("\n")
+    );
 }

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${PERSONA_TERMINAL_PACKAGE:?PERSONA_TERMINAL_PACKAGE must point at the built package}"
+: "${PERSONA_TERMINAL_BASH:?PERSONA_TERMINAL_BASH must point at bash}"
+
+root="${PERSONA_TERMINAL_TEST_ROOT:-$(mktemp -d -t persona-terminal-gate.XXXXXX)}"
+mkdir -p "$root"
+
+store="$root/terminal.redb"
+socket="$root/operator.sock"
+stdout="$root/daemon.stdout"
+stderr="$root/daemon.stderr"
+pattern_event="$root/pattern.event"
+gate_event="$root/gate.event"
+injection_event="$root/injection.event"
+release_event="$root/release.event"
+capture="$root/capture.txt"
+
+cleanup() {
+  if [ -n "${daemon_pid:-}" ]; then
+    kill "$daemon_pid" 2>/dev/null || true
+    wait "$daemon_pid" 2>/dev/null || true
+  fi
+
+  if [ "${PERSONA_TERMINAL_KEEP_ARTIFACTS:-1}" = "1" ]; then
+    printf 'persona-terminal gate artifacts=%s\n' "$root"
+  else
+    rm -rf "$root"
+  fi
+}
+trap cleanup EXIT
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-daemon" \
+  --store "$store" \
+  --name operator \
+  --socket "$socket" \
+  -- "$PERSONA_TERMINAL_BASH" -lc 'printf "ready> "; while IFS= read -r line; do printf "signal-echo:%s\nready> " "$line"; done' \
+  >"$stdout" \
+  2>"$stderr" &
+daemon_pid="$!"
+
+for _ in $(seq 1 100); do
+  if [ -S "$socket" ] && grep -Fq "persona-terminal-daemon socket=$socket" "$stdout"; then
+    break
+  fi
+  sleep 0.05
+done
+
+test -S "$socket"
+grep -Fq "persona-terminal-daemon socket=$socket" "$stdout"
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+  --socket "$socket" \
+  --terminal operator \
+  register-literal-prompt 'ready> ' \
+  >"$pattern_event"
+grep -Fq $'PromptPatternRegistered\toperator\t' "$pattern_event"
+pattern_id="$(awk -F '\t' '/^PromptPatternRegistered/ { print $3 }' "$pattern_event")"
+test -n "$pattern_id"
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+  --socket "$socket" \
+  --terminal operator \
+  acquire-gate "$pattern_id" \
+  >"$gate_event"
+grep -Fq $'GateAcquired\toperator\t' "$gate_event"
+grep -Fq $'\tClean' "$gate_event"
+lease_id="$(awk -F '\t' '/^GateAcquired/ { print $3 }' "$gate_event")"
+test -n "$lease_id"
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-type" \
+  "$socket" \
+  $'cached-human\r'
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-capture" "$socket" >"$capture"
+if grep -Fq "signal-echo:cached-human" "$capture"; then
+  printf 'cached human input reached PTY before gate release\n' >&2
+  exit 1
+fi
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+  --socket "$socket" \
+  --terminal operator \
+  inject-prompt "$lease_id" injected-by-gate \
+  >"$injection_event"
+grep -Fq $'InjectionAck\toperator\t' "$injection_event"
+
+"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+  --socket "$socket" \
+  --terminal operator \
+  release-gate "$lease_id" \
+  >"$release_event"
+grep -Fq $'GateReleased\toperator\t' "$release_event"
+grep -Fq $'\t13' "$release_event"
+
+for _ in $(seq 1 100); do
+  "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-capture" "$socket" >"$capture" || true
+  if grep -Fq "signal-echo:injected-by-gate" "$capture" \
+    && grep -Fq "signal-echo:cached-human" "$capture"; then
+    break
+  fi
+  sleep 0.05
+done
+
+grep -Fq "signal-echo:injected-by-gate" "$capture"
+grep -Fq "signal-echo:cached-human" "$capture"
+printf 'persona-terminal gate witness=passed\n'

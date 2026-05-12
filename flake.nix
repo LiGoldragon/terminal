@@ -84,6 +84,19 @@
               ${context.pkgs.bash}/bin/bash ${./scripts/terminal-signal-witness}
             '';
           };
+          gateCacheWitness = context.pkgs.writeShellApplication {
+            name = "persona-terminal-test-gate-cache";
+            runtimeInputs = [
+              context.pkgs.coreutils
+              context.pkgs.gawk
+              context.pkgs.gnugrep
+            ];
+            text = ''
+              export PERSONA_TERMINAL_PACKAGE=${package}
+              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              ${context.pkgs.bash}/bin/bash ${./scripts/gate-cache-witness}
+            '';
+          };
         in
         {
           default = {
@@ -131,6 +144,10 @@
           test-terminal-signal = {
             type = "app";
             program = "${terminalSignalWitness}/bin/persona-terminal-test-terminal-signal";
+          };
+          test-gate-cache = {
+            type = "app";
+            program = "${gateCacheWitness}/bin/persona-terminal-test-gate-cache";
           };
         }
       );

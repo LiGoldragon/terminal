@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use signal_persona_terminal::{
-    TerminalCapture, TerminalCaptured, TerminalConnection, TerminalDetached, TerminalEvent,
-    TerminalGeneration, TerminalInput, TerminalInputAccepted, TerminalName, TerminalReady,
-    TerminalRejected, TerminalRejectionReason, TerminalRequest, TerminalResize, TerminalResized,
-    TerminalSequence, TerminalTranscriptBytes, TranscriptDelta,
+    AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
+    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalEvent, TerminalGeneration,
+    TerminalInput, TerminalInputAccepted, TerminalName, TerminalReady, TerminalRejected,
+    TerminalRejectionReason, TerminalRequest, TerminalResize, TerminalResized, TerminalSequence,
+    TerminalTranscriptBytes, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
 use crate::error::Result;
@@ -85,6 +86,21 @@ impl TerminalTransportBinding {
                 .into())
             }
             TerminalRequest::TerminalCapture(capture) => self.handle_capture(capture),
+            TerminalRequest::RegisterPromptPattern(registration) => {
+                self.handle_register_prompt_pattern(registration)
+            }
+            TerminalRequest::UnregisterPromptPattern(unregistration) => {
+                self.handle_unregister_prompt_pattern(unregistration)
+            }
+            TerminalRequest::ListPromptPatterns(list) => self.handle_list_prompt_patterns(list),
+            TerminalRequest::AcquireInputGate(acquire) => self.handle_acquire_input_gate(acquire),
+            TerminalRequest::ReleaseInputGate(release) => self.handle_release_input_gate(release),
+            TerminalRequest::WriteInjection(injection) => self.handle_write_injection(injection),
+            TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) => self
+                .handle_signal_control(
+                    subscription.terminal.clone(),
+                    TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription),
+                ),
         }
     }
 
@@ -142,6 +158,68 @@ impl TerminalTransportBinding {
             bytes: TerminalTranscriptBytes::new(snapshot.as_bytes().to_vec()),
         }
         .into())
+    }
+
+    fn handle_register_prompt_pattern(
+        &self,
+        registration: RegisterPromptPattern,
+    ) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            registration.terminal.clone(),
+            TerminalRequest::RegisterPromptPattern(registration),
+        )
+    }
+
+    fn handle_unregister_prompt_pattern(
+        &self,
+        unregistration: UnregisterPromptPattern,
+    ) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            unregistration.terminal.clone(),
+            TerminalRequest::UnregisterPromptPattern(unregistration),
+        )
+    }
+
+    fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            list.terminal.clone(),
+            TerminalRequest::ListPromptPatterns(list),
+        )
+    }
+
+    fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            acquire.terminal.clone(),
+            TerminalRequest::AcquireInputGate(acquire),
+        )
+    }
+
+    fn handle_release_input_gate(&self, release: ReleaseInputGate) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            release.terminal.clone(),
+            TerminalRequest::ReleaseInputGate(release),
+        )
+    }
+
+    fn handle_write_injection(&self, injection: WriteInjection) -> Result<TerminalEvent> {
+        self.handle_signal_control(
+            injection.terminal.clone(),
+            TerminalRequest::WriteInjection(injection),
+        )
+    }
+
+    fn handle_signal_control(
+        &self,
+        terminal: TerminalName,
+        request: TerminalRequest,
+    ) -> Result<TerminalEvent> {
+        if !self.contains_terminal(&terminal) {
+            return Ok(Self::rejected(
+                terminal,
+                TerminalRejectionReason::NotConnected,
+            ));
+        }
+        self.socket().signal(request)
     }
 
     fn contains_terminal(&self, terminal: &TerminalName) -> bool {

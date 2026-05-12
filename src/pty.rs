@@ -7,21 +7,25 @@ use std::path::{Path, PathBuf};
 use std::thread;
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size as terminal_size};
-use kameo::actor::ActorRef;
+use kameo::actor::{ActorRef, Spawn};
+use signal_core::SemaVerb;
 use signal_hook::consts::signal::SIGWINCH;
 use signal_hook::iterator::Signals;
+use signal_persona_terminal as terminal_signal;
 use terminal_cell::{
-    InputSource, SocketReplyWriter, SocketRequest, SocketRequestReader, TerminalCell,
-    TerminalCellError, TerminalCellSocketClient, TerminalCommand, TerminalInput,
+    InputSource, SignalSocketRequest, SocketReplyWriter, SocketRequest, SocketRequestReader,
+    TerminalCell, TerminalCellError, TerminalCellSocketClient, TerminalCommand, TerminalInput,
     TerminalInputGateLease, TerminalInputPort, TerminalLaunch, TerminalOutputPort, TerminalSize,
     TerminalViewerLease, TerminalWorkerKind, TerminalWorkerLifecycle,
-    TerminalWorkerObservationRequest, TerminalWorkerStop, TranscriptSnapshotRequest,
-    TranscriptSubscriptionRequest, WaitForTerminalExit, WaitForTranscriptText,
+    TerminalWorkerLifecycleSubscriptionRequest, TerminalWorkerObservationRequest,
+    TerminalWorkerStop, TranscriptSnapshotRequest, TranscriptSubscriptionRequest,
+    WaitForTerminalExit, WaitForTranscriptText,
 };
 use tokio::runtime::{Builder, Handle};
 
 use crate::error::{Error, Result};
 use crate::registry::SessionRegistration;
+use crate::signal_control::{TerminalSignalControl, TerminalSignalControlRequest};
 use crate::tables::StoreLocation;
 
 const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
@@ -76,6 +80,10 @@ impl TerminalCellDaemon {
         let terminal = session.actor();
         let input_port = session.input_port();
         let output_port = session.output_port();
+        let signal_control = TerminalSignalControl::spawn(TerminalSignalControl::new(
+            terminal.clone(),
+            input_port.clone(),
+        ));
         terminal
             .wait_for_startup_result()
             .await
@@ -94,7 +102,15 @@ impl TerminalCellDaemon {
         io::stdout().flush()?;
 
         tokio::task::spawn_blocking(move || {
-            TerminalCellDaemonLoop::new(listener, terminal, input_port, output_port, runtime).run()
+            TerminalCellDaemonLoop::new(
+                listener,
+                terminal,
+                input_port,
+                output_port,
+                signal_control,
+                runtime,
+            )
+            .run()
         })
         .await
         .map_err(|error| Error::TerminalCell {
@@ -209,6 +225,7 @@ struct TerminalCellDaemonLoop {
     terminal: ActorRef<TerminalCell>,
     input_port: TerminalInputPort,
     output_port: TerminalOutputPort,
+    signal_control: ActorRef<TerminalSignalControl>,
     runtime: Handle,
 }
 
@@ -218,6 +235,7 @@ impl TerminalCellDaemonLoop {
         terminal: ActorRef<TerminalCell>,
         input_port: TerminalInputPort,
         output_port: TerminalOutputPort,
+        signal_control: ActorRef<TerminalSignalControl>,
         runtime: Handle,
     ) -> Self {
         Self {
@@ -225,6 +243,7 @@ impl TerminalCellDaemonLoop {
             terminal,
             input_port,
             output_port,
+            signal_control,
             runtime,
         }
     }
@@ -254,6 +273,7 @@ impl TerminalCellDaemonLoop {
             let terminal = self.terminal.clone();
             let input_port = self.input_port.clone();
             let output_port = self.output_port.clone();
+            let signal_control = self.signal_control.clone();
             let runtime = self.runtime.clone();
             thread::Builder::new()
                 .name("persona-terminal-connection".to_string())
@@ -263,6 +283,7 @@ impl TerminalCellDaemonLoop {
                         terminal,
                         input_port,
                         output_port,
+                        signal_control,
                         runtime,
                     )
                     .run()
@@ -280,6 +301,7 @@ struct TerminalCellConnection {
     terminal: ActorRef<TerminalCell>,
     input_port: TerminalInputPort,
     output_port: TerminalOutputPort,
+    signal_control: ActorRef<TerminalSignalControl>,
     runtime: Handle,
 }
 
@@ -289,6 +311,7 @@ impl TerminalCellConnection {
         terminal: ActorRef<TerminalCell>,
         input_port: TerminalInputPort,
         output_port: TerminalOutputPort,
+        signal_control: ActorRef<TerminalSignalControl>,
         runtime: Handle,
     ) -> Self {
         Self {
@@ -296,6 +319,7 @@ impl TerminalCellConnection {
             terminal,
             input_port,
             output_port,
+            signal_control,
             runtime,
         }
     }
@@ -313,6 +337,7 @@ impl TerminalCellConnection {
             SocketRequest::Wait(wait) => self.wait_for_text(wait),
             SocketRequest::WaitExit => self.wait_for_exit(),
             SocketRequest::WorkerObservation => self.write_worker_observation(),
+            SocketRequest::Signal(request) => self.handle_signal_request(request),
         }
     }
 
@@ -461,6 +486,61 @@ impl TerminalCellConnection {
             .block_on(async { self.terminal.ask(TerminalWorkerObservationRequest).await })
             .map_err(Self::actor_error)?;
         SocketReplyWriter::new(&mut self.stream).write_snapshot(observation.to_text().as_bytes())
+    }
+
+    fn handle_signal_request(&mut self, request: SignalSocketRequest) -> io::Result<()> {
+        if let terminal_signal::TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) =
+            request.payload()
+        {
+            return self.stream_signal_worker_lifecycle(subscription.clone());
+        }
+
+        let event = self
+            .runtime
+            .block_on(async {
+                self.signal_control
+                    .ask(TerminalSignalControlRequest::new(request.into_payload()))
+                    .await
+            })
+            .map_err(Self::actor_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_signal_event(event)
+    }
+
+    fn stream_signal_worker_lifecycle(
+        &mut self,
+        subscription: terminal_signal::SubscribeTerminalWorkerLifecycle,
+    ) -> io::Result<()> {
+        let mut lifecycle = self
+            .runtime
+            .block_on(async {
+                self.terminal
+                    .ask(TerminalWorkerLifecycleSubscriptionRequest)
+                    .await
+            })
+            .map_err(Self::actor_error)?;
+        SocketReplyWriter::new(&mut self.stream).write_signal_event(
+            terminal_signal::TerminalWorkerLifecycleSnapshot {
+                terminal: subscription.terminal.clone(),
+                observations: lifecycle
+                    .replay()
+                    .iter()
+                    .cloned()
+                    .map(TerminalSignalControl::worker_lifecycle)
+                    .collect(),
+            }
+            .into(),
+        )?;
+
+        while let Some(event) = lifecycle.blocking_next_live_event() {
+            SocketReplyWriter::new(&mut self.stream).write_signal_event(
+                terminal_signal::TerminalWorkerLifecycleEvent {
+                    terminal: subscription.terminal.clone(),
+                    observation: TerminalSignalControl::worker_lifecycle(event),
+                }
+                .into(),
+            )?;
+        }
+        Ok(())
     }
 
     fn subscription(&self) -> io::Result<terminal_cell::TranscriptSubscription> {
@@ -735,6 +815,11 @@ impl TerminalSocket {
         Ok(())
     }
 
+    pub fn send_viewer_bytes(&self, bytes: &[u8]) -> Result<()> {
+        self.client.send_viewer_input(bytes)?;
+        Ok(())
+    }
+
     pub fn resize(&self, rows: u16, columns: u16) -> Result<()> {
         self.client.resize(TerminalSize::new(rows, columns))?;
         Ok(())
@@ -742,6 +827,13 @@ impl TerminalSocket {
 
     pub fn capture(&self) -> Result<TerminalSnapshot> {
         Ok(TerminalSnapshot::from_bytes(self.client.capture()?))
+    }
+
+    pub fn signal(
+        &self,
+        request: terminal_signal::TerminalRequest,
+    ) -> Result<terminal_signal::TerminalEvent> {
+        Ok(self.client.send_signal_request(SemaVerb::Assert, request)?)
     }
 }
 
@@ -763,7 +855,7 @@ impl TypeRequest {
     }
 
     pub fn run(self) -> Result<()> {
-        TerminalSocket::from_path(self.socket).send_bytes(&self.text)
+        TerminalSocket::from_path(self.socket).send_viewer_bytes(&self.text)
     }
 }
 

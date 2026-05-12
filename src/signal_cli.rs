@@ -4,10 +4,15 @@ use std::path::PathBuf;
 
 use signal_core::{Reply, Request, SemaVerb};
 use signal_persona_terminal::{
-    Frame, FrameBody, TerminalCapture, TerminalCaptured, TerminalColumns, TerminalConnection,
-    TerminalDetached, TerminalEvent, TerminalInput, TerminalInputAccepted, TerminalInputBytes,
-    TerminalName, TerminalReady, TerminalRejected, TerminalRequest, TerminalResize,
-    TerminalResized, TerminalRows, TranscriptDelta,
+    AcquireInputGate, Frame, FrameBody, GateAcquired, GateBusy, GateReleased, InjectionAck,
+    InjectionRejected, InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns,
+    PromptPattern, PromptPatternBytes, PromptPatternList, PromptPatternRegistered,
+    PromptPatternUnregistered, PromptState, RegisterPromptPattern, ReleaseInputGate,
+    SubscribeTerminalWorkerLifecycle, TerminalCapture, TerminalCaptured, TerminalColumns,
+    TerminalConnection, TerminalDetached, TerminalEvent, TerminalInput, TerminalInputAccepted,
+    TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected, TerminalRequest,
+    TerminalResize, TerminalResized, TerminalRows, TerminalWorkerLifecycleEvent,
+    TerminalWorkerLifecycleSnapshot, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
 use crate::contract::TerminalTransportBinding;
@@ -60,6 +65,15 @@ pub enum TerminalSignalOperation {
     Prompt { text: String },
     Capture,
     Resize { rows: u16, columns: u16 },
+    RegisterLiteralPrompt { suffix: Vec<u8> },
+    RegisterRegexPrompt { pattern: Vec<u8> },
+    UnregisterPrompt { pattern_id: String },
+    ListPrompts,
+    AcquireGate { pattern_id: Option<String> },
+    ReleaseGate { lease_id: u64 },
+    Inject { lease_id: u64, bytes: Vec<u8> },
+    InjectPrompt { lease_id: u64, text: String },
+    WorkerLifecycleSnapshot,
 }
 
 impl TerminalSignalOperation {
@@ -87,6 +101,58 @@ impl TerminalSignalOperation {
                 columns: TerminalColumns::new(columns),
             }
             .into(),
+            Self::RegisterLiteralPrompt { suffix } => RegisterPromptPattern {
+                terminal,
+                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(suffix)),
+            }
+            .into(),
+            Self::RegisterRegexPrompt { pattern } => RegisterPromptPattern {
+                terminal,
+                pattern: PromptPattern::RegexSuffix {
+                    pattern: PromptPatternBytes::new(pattern),
+                },
+            }
+            .into(),
+            Self::UnregisterPrompt { pattern_id } => UnregisterPromptPattern {
+                terminal,
+                pattern_id: signal_persona_terminal::PromptPatternId::new(pattern_id),
+            }
+            .into(),
+            Self::ListPrompts => ListPromptPatterns { terminal }.into(),
+            Self::AcquireGate { pattern_id } => AcquireInputGate {
+                terminal,
+                reason: InputGateReason::new("persona-terminal signal cli"),
+                prompt_pattern_id: pattern_id.map(signal_persona_terminal::PromptPatternId::new),
+            }
+            .into(),
+            Self::ReleaseGate { lease_id } => ReleaseInputGate {
+                terminal,
+                lease: InputGateLease {
+                    id: InputGateLeaseId::new(lease_id),
+                },
+            }
+            .into(),
+            Self::Inject { lease_id, bytes } => WriteInjection {
+                terminal,
+                lease: InputGateLease {
+                    id: InputGateLeaseId::new(lease_id),
+                },
+                bytes: TerminalInputBytes::new(bytes),
+            }
+            .into(),
+            Self::InjectPrompt { lease_id, text } => {
+                let mut bytes = text.into_bytes();
+                bytes.push(b'\r');
+                WriteInjection {
+                    terminal,
+                    lease: InputGateLease {
+                        id: InputGateLeaseId::new(lease_id),
+                    },
+                    bytes: TerminalInputBytes::new(bytes),
+                }
+                .into()
+            }
+            Self::WorkerLifecycleSnapshot => SubscribeTerminalWorkerLifecycle { terminal }.into(),
         }
     }
 }
@@ -133,6 +199,57 @@ impl TerminalSignalArguments {
                     });
                     break;
                 }
+                "register-literal-prompt" | "register-literal" => {
+                    operation = Some(TerminalSignalOperation::RegisterLiteralPrompt {
+                        suffix: Self::required_text(arguments.next(), "suffix")?.into_bytes(),
+                    });
+                    break;
+                }
+                "register-regex-prompt" | "register-regex" => {
+                    operation = Some(TerminalSignalOperation::RegisterRegexPrompt {
+                        pattern: Self::required_text(arguments.next(), "pattern")?.into_bytes(),
+                    });
+                    break;
+                }
+                "unregister-prompt" => {
+                    operation = Some(TerminalSignalOperation::UnregisterPrompt {
+                        pattern_id: Self::required_text(arguments.next(), "pattern-id")?,
+                    });
+                    break;
+                }
+                "list-prompts" => operation = Some(TerminalSignalOperation::ListPrompts),
+                "acquire-gate" => {
+                    operation = Some(TerminalSignalOperation::AcquireGate {
+                        pattern_id: arguments
+                            .next()
+                            .map(|value| value.to_string_lossy().into_owned()),
+                    });
+                    break;
+                }
+                "release-gate" => {
+                    operation = Some(TerminalSignalOperation::ReleaseGate {
+                        lease_id: Self::required_u64(arguments.next(), "lease-id")?,
+                    });
+                    break;
+                }
+                "inject" => {
+                    operation = Some(TerminalSignalOperation::Inject {
+                        lease_id: Self::required_u64(arguments.next(), "lease-id")?,
+                        bytes: Self::required_text(arguments.next(), "bytes")?.into_bytes(),
+                    });
+                    break;
+                }
+                "inject-prompt" => {
+                    operation = Some(TerminalSignalOperation::InjectPrompt {
+                        lease_id: Self::required_u64(arguments.next(), "lease-id")?,
+                        text: Self::required_text(arguments.next(), "text")?,
+                    });
+                    break;
+                }
+                "worker-lifecycle" => {
+                    operation = Some(TerminalSignalOperation::WorkerLifecycleSnapshot);
+                    break;
+                }
                 value if socket.is_none() => socket = Some(PathBuf::from(value)),
                 value if terminal.is_none() => terminal = Some(TerminalName::new(value)),
                 _ => {}
@@ -157,6 +274,14 @@ impl TerminalSignalArguments {
     fn required_u16(value: Option<OsString>, field: &str) -> Result<u16> {
         Self::required_text(value, field)?
             .parse::<u16>()
+            .map_err(|_| Error::InvalidArgument {
+                detail: format!("invalid {field}"),
+            })
+    }
+
+    fn required_u64(value: Option<OsString>, field: &str) -> Result<u64> {
+        Self::required_text(value, field)?
+            .parse::<u64>()
             .map_err(|_| Error::InvalidArgument {
                 detail: format!("invalid {field}"),
             })
@@ -300,8 +425,118 @@ impl TerminalEventLine {
                 "TerminalRejected\t{}\t{reason:?}",
                 terminal.as_str()
             )?,
+            TerminalEvent::PromptPatternRegistered(PromptPatternRegistered {
+                terminal,
+                pattern_id,
+            }) => writeln!(
+                output,
+                "PromptPatternRegistered\t{}\t{}",
+                terminal.as_str(),
+                pattern_id.as_str()
+            )?,
+            TerminalEvent::PromptPatternUnregistered(PromptPatternUnregistered {
+                terminal,
+                pattern_id,
+            }) => writeln!(
+                output,
+                "PromptPatternUnregistered\t{}\t{}",
+                terminal.as_str(),
+                pattern_id.as_str()
+            )?,
+            TerminalEvent::PromptPatternList(PromptPatternList { terminal, entries }) => writeln!(
+                output,
+                "PromptPatternList\t{}\t{}",
+                terminal.as_str(),
+                entries.len()
+            )?,
+            TerminalEvent::GateAcquired(GateAcquired {
+                terminal,
+                lease,
+                prompt_state,
+            }) => writeln!(
+                output,
+                "GateAcquired\t{}\t{}\t{}",
+                terminal.as_str(),
+                lease.id.into_u64(),
+                PromptStateText::new(prompt_state)
+            )?,
+            TerminalEvent::GateBusy(GateBusy {
+                terminal,
+                current_holder,
+            }) => writeln!(
+                output,
+                "GateBusy\t{}\t{}",
+                terminal.as_str(),
+                current_holder.into_u64()
+            )?,
+            TerminalEvent::GateReleased(GateReleased {
+                terminal,
+                lease,
+                cached_human_bytes,
+            }) => writeln!(
+                output,
+                "GateReleased\t{}\t{}\t{}",
+                terminal.as_str(),
+                lease.id.into_u64(),
+                cached_human_bytes.into_u64()
+            )?,
+            TerminalEvent::InjectionAck(InjectionAck {
+                terminal,
+                generation,
+                sequence,
+            }) => writeln!(
+                output,
+                "InjectionAck\t{}\t{}\t{}",
+                terminal.as_str(),
+                generation.into_u64(),
+                sequence.into_u64()
+            )?,
+            TerminalEvent::InjectionRejected(InjectionRejected { terminal, reason }) => writeln!(
+                output,
+                "InjectionRejected\t{}\t{reason:?}",
+                terminal.as_str()
+            )?,
+            TerminalEvent::TerminalWorkerLifecycleSnapshot(TerminalWorkerLifecycleSnapshot {
+                terminal,
+                observations,
+            }) => writeln!(
+                output,
+                "TerminalWorkerLifecycleSnapshot\t{}\t{}",
+                terminal.as_str(),
+                observations.len()
+            )?,
+            TerminalEvent::TerminalWorkerLifecycleEvent(TerminalWorkerLifecycleEvent {
+                terminal,
+                observation,
+            }) => writeln!(
+                output,
+                "TerminalWorkerLifecycleEvent\t{}\t{observation:?}",
+                terminal.as_str()
+            )?,
         }
         Ok(())
+    }
+}
+
+struct PromptStateText<'state> {
+    state: &'state PromptState,
+}
+
+impl<'state> PromptStateText<'state> {
+    fn new(state: &'state PromptState) -> Self {
+        Self { state }
+    }
+}
+
+impl std::fmt::Display for PromptStateText<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.state {
+            PromptState::NotChecked => formatter.write_str("NotChecked"),
+            PromptState::Clean => formatter.write_str("Clean"),
+            PromptState::Dirty { trailing_count } => {
+                write!(formatter, "Dirty:{}", trailing_count.into_u64())
+            }
+        }
     }
 }
 

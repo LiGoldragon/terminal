@@ -46,6 +46,8 @@ flowchart LR
 - output scrollback replay;
 - resize propagation;
 - terminal-cell socket adapter;
+- terminal Signal control actor for prompt patterns, input-gate leases,
+  prompt-state checks, and injection decisions;
 - component Sema table for named terminal sessions;
 - read-only session inspection CLIs;
 - `signal-persona-terminal` request/event adapter.
@@ -73,6 +75,13 @@ frames, sends them through the Persona terminal transport binding, and renders
 the resulting terminal event. It is not the future long-lived supervisor socket;
 it is the first executable witness that the contract can drive a
 terminal-cell-backed daemon.
+
+`TerminalSignalControl` is the first Kameo actor in this repo's supervisor
+direction. It owns prompt-pattern registry state, signal input-gate leases,
+prompt cleanliness checks, and the decision to accept or reject programmatic
+injection. The surrounding daemon still owns the socket accept loop and
+terminal-cell session shell; future supervisor work should continue splitting
+those runtime planes into named actors instead of growing helper methods.
 
 ## 3 · Boundaries
 
@@ -160,6 +169,15 @@ of truth.
   `TerminalCapture` through the `signal-persona-terminal` adapter, and prove
   captured bytes came from the child PTY. The flake exposes this stateful
   witness as `nix run .#test-terminal-signal`.
+- Gate-and-cache injection: start a real terminal-cell-backed daemon, register
+  a prompt pattern, acquire an input gate with clean prompt state, send viewer
+  bytes while locked, prove those bytes do not reach the PTY before release,
+  inject under the lease, release the gate, and prove cached human bytes replay
+  afterward. The flake exposes this stateful witness as
+  `nix run .#test-gate-cache`.
+- Actor-owned signal control: the pure test suite asserts
+  `TerminalSignalControl` is a Kameo actor with typed messages and that
+  production terminal-control state does not use shared `Arc<Mutex<_>>` state.
 
 ## 6 · Invariants
 
@@ -174,6 +192,7 @@ of truth.
 ```text
 src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-persona-terminal adapter
+src/signal_control.rs              Kameo actor for prompt/gate/injection control state
 src/tables.rs                      component Sema tables for named sessions
 src/registry.rs                    session registration + inspection clients
 src/bin/persona-terminal-daemon.rs  daemon entry
@@ -184,6 +203,7 @@ src/bin/persona-terminal-resolve.rs  read-only session name resolver
 src/bin/persona-terminal-signal.rs   signal terminal request client
 scripts/named-session-registry-witness stateful named-session witness
 scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness
+scripts/gate-cache-witness           stateful gate-and-cache injection witness
 ```
 
 ## See Also
