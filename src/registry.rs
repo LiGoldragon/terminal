@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_persona_terminal::TerminalName;
+use signal_persona_terminal::{TerminalName, TerminalSessionObservation};
 
 use crate::Error;
 use crate::Result;
-use crate::tables::{StoreLocation, StoredTerminalSession, TerminalTables};
+use crate::tables::{StoreLocation, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionListRequest {
@@ -46,7 +46,7 @@ impl SessionResolveRequest {
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
         if let Some(session) = TerminalTables::open(&self.store)?.session(&self.terminal)? {
-            writeln!(output, "{}", session.socket_path_text())?;
+            writeln!(output, "{}", session.socket_path().as_str())?;
         } else {
             return Err(Error::UnknownTerminalSession {
                 terminal: self.terminal.as_str().to_string(),
@@ -58,11 +58,11 @@ impl SessionResolveRequest {
 }
 
 struct SessionLine {
-    session: StoredTerminalSession,
+    session: TerminalSessionObservation,
 }
 
 impl SessionLine {
-    fn new(session: StoredTerminalSession) -> Self {
+    fn new(session: TerminalSessionObservation) -> Self {
         Self { session }
     }
 
@@ -71,7 +71,7 @@ impl SessionLine {
             output,
             "{}\t{}\t{}\t{}\t{}",
             self.session.terminal().as_str(),
-            self.session.socket_path_text(),
+            self.session.socket_path().as_str(),
             self.session.state().as_str(),
             self.session.generation().into_u64(),
             self.session.transcript_sequence().into_u64()
@@ -124,7 +124,7 @@ impl SessionArguments {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRegistration {
     store: StoreLocation,
-    session: StoredTerminalSession,
+    session: TerminalSessionObservation,
 }
 
 impl SessionRegistration {
@@ -133,9 +133,10 @@ impl SessionRegistration {
         terminal: TerminalName,
         socket_path: impl Into<PathBuf>,
     ) -> Self {
+        let socket_path = socket_path.into().to_string_lossy().into_owned();
         Self {
             store,
-            session: StoredTerminalSession::ready(terminal, socket_path),
+            session: TerminalSessionObservation::ready(terminal, socket_path),
         }
     }
 

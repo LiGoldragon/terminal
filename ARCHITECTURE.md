@@ -156,7 +156,9 @@ engine manager supervises both and pushes their peer socket paths at spawn.
 Production registry state lives in `persona-terminal`'s component Sema, not in
 viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
 remains a convenience cache; the typed terminal registry is the durable source
-of truth.
+of truth. The table value record shapes for inspectable terminal state are
+owned by `signal-persona-terminal`'s introspection module; this component owns
+the redb file, table declarations, write sequencing, and read consistency.
 
 ## 4 · Constraints
 
@@ -275,7 +277,7 @@ src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-persona-terminal adapter
 src/signal_control.rs              Kameo actor for prompt/gate/injection control state
 src/supervisor.rs                  engine-facing Signal supervisor socket
-src/tables.rs                      component Sema tables for named sessions
+src/tables.rs                      component Sema tables over signal-persona-terminal introspection records
 src/registry.rs                    session registration + inspection clients
 src/bin/persona-terminal-daemon.rs  daemon entry
 src/bin/persona-terminal-view.rs    viewer entry

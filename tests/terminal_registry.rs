@@ -5,13 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use persona_terminal::Error;
 use persona_terminal::registry::SessionRegistration;
 use persona_terminal::registry::SessionResolveRequest;
-use persona_terminal::tables::{
-    DeliveryAttemptState, SessionArchiveState, StoreLocation, StoredDeliveryAttempt,
-    StoredSessionArchive, StoredSessionHealth, StoredTerminalEvent, StoredTerminalSession,
-    StoredViewerAttachment, TerminalSessionState, TerminalTables, ViewerAttachmentState,
-};
+use persona_terminal::tables::{StoreLocation, TerminalTables};
 use signal_persona_terminal::{
-    TerminalEvent, TerminalGeneration, TerminalName, TerminalOperationKind, TerminalReady,
+    TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEvent,
+    TerminalEventObservation, TerminalGeneration, TerminalName, TerminalObservationSequence,
+    TerminalOperationKind, TerminalReady, TerminalSessionArchiveObservation,
+    TerminalSessionArchiveState, TerminalSessionHealthObservation, TerminalSessionObservation,
+    TerminalSessionState, TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
 };
 
 struct RegistryFixture {
@@ -58,7 +58,7 @@ fn terminal_sessions_are_component_sema_records() {
     let fixture = RegistryFixture::new("component-sema-records");
     let tables = fixture.tables();
     let terminal = TerminalName::new("operator");
-    let session = StoredTerminalSession::ready(terminal.clone(), "/tmp/operator.sock");
+    let session = TerminalSessionObservation::ready(terminal.clone(), "/tmp/operator.sock");
 
     tables.put_session(&session).expect("session is written");
 
@@ -67,7 +67,7 @@ fn terminal_sessions_are_component_sema_records() {
         .expect("session is readable")
         .expect("session exists");
     assert_eq!(stored.terminal(), &terminal);
-    assert_eq!(stored.socket_path_text(), "/tmp/operator.sock");
+    assert_eq!(stored.socket_path().as_str(), "/tmp/operator.sock");
     assert_eq!(stored.state(), TerminalSessionState::Ready);
 }
 
@@ -83,7 +83,7 @@ fn terminal_daemon_registration_writes_named_session() {
     let rows = fixture.tables().sessions().expect("sessions are readable");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].terminal(), &terminal);
-    assert_eq!(rows[0].socket_path_text(), "/tmp/assistant.sock");
+    assert_eq!(rows[0].socket_path().as_str(), "/tmp/assistant.sock");
 }
 
 #[test]
@@ -107,15 +107,15 @@ fn terminal_tables_cover_t6_state_records() {
     let terminal = TerminalName::new("operator");
 
     tables
-        .put_delivery_attempt(&StoredDeliveryAttempt::started(
-            1,
+        .put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
+            TerminalObservationSequence::new(1),
             terminal.clone(),
             TerminalOperationKind::TerminalConnection,
         ))
         .expect("delivery attempt is written");
     tables
-        .put_terminal_event(&StoredTerminalEvent::new(
-            1,
+        .put_terminal_event(&TerminalEventObservation::new(
+            TerminalObservationSequence::new(1),
             terminal.clone(),
             TerminalEvent::from(TerminalReady {
                 terminal: terminal.clone(),
@@ -124,22 +124,22 @@ fn terminal_tables_cover_t6_state_records() {
         ))
         .expect("terminal event is written");
     tables
-        .put_viewer_attachment(&StoredViewerAttachment::new(
-            1,
+        .put_viewer_attachment(&TerminalViewerAttachmentObservation::new(
+            TerminalObservationSequence::new(1),
             terminal.clone(),
             "visible-window",
-            ViewerAttachmentState::Attached,
+            TerminalViewerAttachmentState::Attached,
         ))
         .expect("viewer attachment is written");
     tables
-        .put_session_health(&StoredSessionHealth::new(
+        .put_session_health(&TerminalSessionHealthObservation::new(
             terminal.clone(),
             TerminalSessionState::Ready,
             TerminalGeneration::new(1),
         ))
         .expect("session health is written");
     tables
-        .put_session_archive(&StoredSessionArchive::archived(
+        .put_session_archive(&TerminalSessionArchiveObservation::archived(
             terminal.clone(),
             "session rotated",
         ))
@@ -154,7 +154,7 @@ fn terminal_tables_cover_t6_state_records() {
         attempts[0].operation(),
         TerminalOperationKind::TerminalConnection
     );
-    assert_eq!(attempts[0].state(), DeliveryAttemptState::Started);
+    assert_eq!(attempts[0].state(), TerminalDeliveryAttemptState::Started);
 
     let events = tables
         .terminal_event_records()
@@ -166,8 +166,11 @@ fn terminal_tables_cover_t6_state_records() {
         .viewer_attachment_records()
         .expect("viewer attachments are readable");
     assert_eq!(attachments.len(), 1);
-    assert_eq!(attachments[0].viewer(), "visible-window");
-    assert_eq!(attachments[0].state(), ViewerAttachmentState::Attached);
+    assert_eq!(attachments[0].viewer().as_str(), "visible-window");
+    assert_eq!(
+        attachments[0].state(),
+        TerminalViewerAttachmentState::Attached
+    );
 
     let health = tables
         .session_health_records()
@@ -180,6 +183,6 @@ fn terminal_tables_cover_t6_state_records() {
         .expect("session archive records are readable");
     assert_eq!(archive.len(), 1);
     assert_eq!(archive[0].terminal(), &terminal);
-    assert_eq!(archive[0].reason(), "session rotated");
-    assert_eq!(archive[0].state(), SessionArchiveState::Archived);
+    assert_eq!(archive[0].reason().as_str(), "session rotated");
+    assert_eq!(archive[0].state(), TerminalSessionArchiveState::Archived);
 }

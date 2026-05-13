@@ -9,12 +9,12 @@ use persona_terminal::registry::SessionRegistration;
 use persona_terminal::supervisor::{
     TerminalSupervisorCommandLine, TerminalSupervisorDaemon, TerminalSupervisorFrameCodec,
 };
-use persona_terminal::tables::{DeliveryAttemptState, StoreLocation, TerminalTables};
+use persona_terminal::tables::{StoreLocation, TerminalTables};
 use signal_persona_terminal::{
     PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
-    RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalEvent, TerminalName,
-    TerminalWorkerKind, TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent,
-    TerminalWorkerLifecycleSnapshot, TerminalWorkerStopReason,
+    RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
+    TerminalEvent, TerminalName, TerminalWorkerKind, TerminalWorkerLifecycle,
+    TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot, TerminalWorkerStopReason,
 };
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
@@ -188,7 +188,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
         .expect("delivery attempts are readable");
     assert_eq!(attempts.len(), 1);
     assert_eq!(attempts[0].terminal(), &TerminalName::new("operator"));
-    assert_eq!(attempts[0].state(), DeliveryAttemptState::Started);
+    assert_eq!(attempts[0].state(), TerminalDeliveryAttemptState::Started);
 
     let events = tables
         .terminal_event_records()

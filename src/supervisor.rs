@@ -8,13 +8,14 @@ use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_core::{FrameBody, Reply, Request};
 use signal_persona_terminal::{
-    Frame as TerminalFrame, SubscribeTerminalWorkerLifecycle, TerminalEvent, TerminalName,
+    Frame as TerminalFrame, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation,
+    TerminalEvent, TerminalEventObservation, TerminalName, TerminalObservationSequence,
     TerminalOperationKind, TerminalRejected, TerminalRejectionReason, TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
 use crate::error::{Error, Result};
-use crate::tables::{StoreLocation, StoredDeliveryAttempt, StoredTerminalEvent, TerminalTables};
+use crate::tables::{StoreLocation, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorDaemon {
@@ -344,8 +345,8 @@ impl TerminalSupervisor {
     ) -> Result<TerminalEvent> {
         let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
         let tables = TerminalTables::open(&self.store)?;
-        tables.put_delivery_attempt(&StoredDeliveryAttempt::started(
-            sequence,
+        tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
+            TerminalObservationSequence::new(sequence),
             terminal.clone(),
             request.operation_kind(),
         ))?;
@@ -359,7 +360,7 @@ impl TerminalSupervisor {
             return Ok(event);
         };
         let mut binding =
-            TerminalTransportBinding::from_socket_path(terminal, session.socket_path());
+            TerminalTransportBinding::from_socket_path(terminal, session.socket_path().as_str());
         let event = binding.handle_request(request)?;
         self.record_terminal_event(&tables, event.clone())?;
         Ok(event)
@@ -372,8 +373,8 @@ impl TerminalSupervisor {
     ) -> Result<TerminalSupervisorSubscriptionStart> {
         let terminal = subscription.terminal.clone();
         let tables = TerminalTables::open(&self.store)?;
-        tables.put_delivery_attempt(&StoredDeliveryAttempt::started(
-            sequence,
+        tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
+            TerminalObservationSequence::new(sequence),
             terminal.clone(),
             TerminalOperationKind::SubscribeTerminalWorkerLifecycle,
         ))?;
@@ -387,7 +388,10 @@ impl TerminalSupervisor {
             return Ok(TerminalSupervisorSubscriptionStart::Immediate(event));
         };
         Ok(TerminalSupervisorSubscriptionStart::Stream(
-            TerminalSupervisorSubscriptionPlan::new(subscription, session.socket_path()),
+            TerminalSupervisorSubscriptionPlan::new(
+                subscription,
+                PathBuf::from(session.socket_path().as_str()),
+            ),
         ))
     }
 
@@ -397,8 +401,8 @@ impl TerminalSupervisor {
         event: TerminalEvent,
     ) -> Result<()> {
         self.recorded_event_count = self.recorded_event_count.saturating_add(1);
-        tables.put_terminal_event(&StoredTerminalEvent::new(
-            self.recorded_event_count,
+        tables.put_terminal_event(&TerminalEventObservation::new(
+            TerminalObservationSequence::new(self.recorded_event_count),
             TerminalRequestTerminal::from_event(&event).into_terminal(),
             event,
         ))

@@ -12,6 +12,9 @@ Rules for work here:
   here.
 - Session registry state lives in this repo's component Sema. Do not add
   registry JSON, text manifests, or viewer-owned state files for terminal names.
+- Inspectable terminal table values use `signal-persona-terminal`'s
+  introspection record shapes. This repo still owns the Sema database, table
+  declarations, reducers, and consistency policy.
 - Viewer and compositor behavior is adapter-local around the terminal owner.
   Do not revive terminal-brand mux helpers as runtime paths.
 - Keep harness processes durable. Closing a viewer must not kill the child

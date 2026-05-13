@@ -120,7 +120,8 @@ fn terminal_brand_mux_adapter_is_retired_not_reimplemented() {
     let retired_binary = retired_brand.to_ascii_lowercase();
     let retired_socket = ["WEZ", "TERM_UNIX_SOCKET"].concat();
     let forbidden_fragments = [
-        "TerminalDelivery",
+        "TerminalDeliveryAdapter",
+        "TerminalDeliveryRuntime",
         "DeliverTerminalPrompt",
         retired_brand.as_str(),
         retired_binary.as_str(),
@@ -168,7 +169,8 @@ fn terminal_registry_state_goes_through_component_sema() {
 
     assert!(manifest.contains("sema"));
     assert!(tables_source.contains("Sema::open_with_schema"));
-    assert!(tables_source.contains("Table<&'static str, StoredTerminalSession>"));
+    assert!(tables_source.contains("Table<&'static str, TerminalSessionObservation>"));
+    assert!(!tables_source.contains("StoredTerminalSession"));
     assert!(!tables_source.contains("registry.json"));
     assert!(!tables_source.contains("sessions.json"));
 }
