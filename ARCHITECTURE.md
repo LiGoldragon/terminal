@@ -52,6 +52,49 @@ flowchart LR
 - read-only session inspection CLIs;
 - `signal-persona-terminal` request/event adapter.
 
+## 1.5 · Supervision-relation reception, prompt-pattern lifecycle, gate forwarding, message-landing endpoint
+
+Per
+`~/primary/reports/designer/142-supervision-in-signal-persona-no-message-proxy-daemon.md` §2.2
+and
+`~/primary/reports/designer/143-prototype-readiness-gap-audit.md` §2.6 + §4.2 + §4.7:
+
+**Supervision relation**. The `persona-terminal-supervisor` daemon answers
+`signal-persona::SupervisionRequest` from a canonical `SupervisionPhase`
+Kameo actor alongside `TerminalSignalControl`. The daemon reads its
+`signal-persona::SpawnEnvelope` at startup, binds `terminal.sock` at mode
+0600, and proceeds. Unbuilt domain operations reply
+`TerminalEvent::TerminalRequestUnimplemented` (per /143 §4.3).
+
+**Prompt-pattern lifecycle** (per /127 §1.2 + /143 §2.6):
+`persona-harness` registers a per-adapter `PromptPattern` with the
+supervisor at session-create time via
+`signal-persona-terminal::RegisterPromptPattern`. The supervisor
+forwards the registration to the relevant terminal-cell; the cell
+returns a typed `PromptPatternId` which the supervisor stores keyed by
+harness identity. Later `AcquireInputGate { pattern_id }` requests reference
+that id.
+
+**Gate-and-acquire forwarding** (per /127 §1.2 + /143 §2.6): when the
+supervisor receives `AcquireInputGate`, it does **not** answer locally —
+it forwards the request to the named terminal-cell, awaits the cell's
+typed `GateAcquired { lease, prompt_state }` reply, and relays it. The
+`prompt_state` carries `Clean | Dirty | NotChecked` per
+`signal-persona-terminal::PromptState`. Prototype default per /127
+§1.4: dirty state defers injection (`InjectionRejected { reason:
+DirtyPrompt }`); clean-then-inject machinery is deferred.
+
+**Message-landing endpoint** (per /143 §4.7): the prototype's live
+message path terminates here. `persona-harness` calls
+`AcquireInputGate { pattern_id }` on the supervisor → forwarded to the
+terminal-cell → cell returns `GateAcquired { lease, prompt_state }` →
+if `Clean`, harness calls `WriteInjection { lease, bytes,
+injection_sequence }` → supervisor forwards to cell → cell writes bytes
+to child PTY → returns `InjectionAck { sequence }` → supervisor relays
+back through harness → router commits delivery. The bytes appear in the
+fixture cell's transcript; the prototype's witness reads the transcript
+to verify the end-to-end path.
+
 ## 2 · State and Ownership
 
 The terminal cell owns the child process and PTY. Viewers are disposable
