@@ -1,17 +1,25 @@
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use persona_terminal::SocketMode;
 use persona_terminal::registry::SessionRegistration;
 use persona_terminal::supervisor::{
     TerminalSupervisorCommandLine, TerminalSupervisorDaemon, TerminalSupervisorFrameCodec,
 };
 use persona_terminal::tables::{StoreLocation, TerminalTables};
+use persona_terminal::{SocketMode, SupervisionFrameCodec};
+use signal_core::{FrameBody, Request};
+use signal_persona::{
+    ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
+    ComponentReadinessQuery, SupervisionFrame, SupervisionProtocolVersion, SupervisionReply,
+    SupervisionRequest,
+};
 use signal_persona_terminal::{
     PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
     RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
@@ -55,6 +63,10 @@ impl SupervisorFixture {
 
     fn supervisor_socket(&self) -> PathBuf {
         self.root.join("supervisor.sock")
+    }
+
+    fn supervision_socket(&self) -> PathBuf {
+        self.root.join("supervision.sock")
     }
 }
 
@@ -248,6 +260,73 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 }
 
 #[test]
+fn terminal_supervisor_answers_component_supervision_relation() {
+    let fixture = SupervisorFixture::new("supervision");
+    let supervision_socket = fixture.supervision_socket();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_persona-terminal-supervisor"))
+        .arg("--socket")
+        .arg(fixture.supervisor_socket())
+        .arg("--store")
+        .arg(fixture.store().as_path())
+        .env("PERSONA_SOCKET_MODE", "600")
+        .env("PERSONA_SUPERVISION_SOCKET_PATH", &supervision_socket)
+        .env("PERSONA_SUPERVISION_SOCKET_MODE", "600")
+        .spawn()
+        .expect("persona-terminal-supervisor starts");
+
+    wait_for_socket(&supervision_socket);
+    let mode = fs::metadata(&supervision_socket)
+        .expect("supervision socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+
+    let mut stream = UnixStream::connect(&supervision_socket).expect("client connects");
+    let codec = SupervisionFrameCodec::new(1024 * 1024);
+
+    write_supervision_request(
+        &mut stream,
+        SupervisionRequest::ComponentHello(ComponentHello {
+            expected_component: ComponentName::new("persona-terminal"),
+            expected_kind: ComponentKind::Terminal,
+            supervision_protocol_version: SupervisionProtocolVersion::new(1),
+        }),
+    );
+    assert!(matches!(
+        codec.read_reply(&mut stream).expect("identity reply"),
+        SupervisionReply::ComponentIdentity(identity)
+            if identity.name.as_str() == "persona-terminal"
+                && identity.kind == ComponentKind::Terminal
+    ));
+
+    write_supervision_request(
+        &mut stream,
+        SupervisionRequest::ComponentReadinessQuery(ComponentReadinessQuery {
+            component: ComponentName::new("persona-terminal"),
+        }),
+    );
+    assert!(matches!(
+        codec.read_reply(&mut stream).expect("readiness reply"),
+        SupervisionReply::ComponentReady(_)
+    ));
+
+    write_supervision_request(
+        &mut stream,
+        SupervisionRequest::ComponentHealthQuery(ComponentHealthQuery {
+            component: ComponentName::new("persona-terminal"),
+        }),
+    );
+    assert!(matches!(
+        codec.read_reply(&mut stream).expect("health reply"),
+        SupervisionReply::ComponentHealthReport(report)
+            if report.health == ComponentHealth::Running
+    ));
+
+    stop_child(&mut child);
+}
+
+#[test]
 fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     let fixture = SupervisorFixture::new("streams-lifecycle");
     let terminal = TerminalName::new("responder");
@@ -367,4 +446,31 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     assert_eq!(events[0].event(), &snapshot);
     assert_eq!(events[1].event(), &delta);
     cell.join().expect("fake cell joins");
+}
+
+fn write_supervision_request(stream: &mut UnixStream, request: SupervisionRequest) {
+    let frame = SupervisionFrame::new(FrameBody::Request(Request::from_payload(request)));
+    let bytes = frame
+        .encode_length_prefixed()
+        .expect("supervision request encodes");
+    stream
+        .write_all(bytes.as_slice())
+        .expect("supervision request writes");
+    stream.flush().expect("supervision request flushes");
+}
+
+fn wait_for_socket(socket: &PathBuf) {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(5) {
+        if socket.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("socket was not created: {}", socket.display());
+}
+
+fn stop_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }

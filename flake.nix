@@ -196,6 +196,14 @@
                 cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_daemon_applies_spawn_envelope_socket_mode -- --exact";
               }
             );
+          terminal-supervisor-answers-component-supervision-relation =
+            context.craneLib.cargoTest (
+              context.commonArgs
+              // {
+                inherit (context) cargoArtifacts;
+                cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_answers_component_supervision_relation -- --exact";
+              }
+            );
           terminal-supervisor-socket-routes-through-component-sema = context.craneLib.cargoTest (
             context.commonArgs
             // {

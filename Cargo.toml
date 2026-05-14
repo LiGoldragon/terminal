@@ -55,6 +55,7 @@ rkyv         = { version = "0.8", default-features = false, features = ["std", "
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-core  = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-hook  = "0.3"
+signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"

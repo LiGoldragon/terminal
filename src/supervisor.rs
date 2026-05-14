@@ -16,6 +16,7 @@ use signal_persona_terminal::{
 use crate::contract::TerminalTransportBinding;
 use crate::error::{Error, Result};
 use crate::socket::SocketMode;
+use crate::supervision::{SupervisionListener, SupervisionProfile};
 use crate::tables::{StoreLocation, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +55,9 @@ impl TerminalSupervisorDaemon {
 
     pub fn run(self) -> Result<()> {
         let bound = self.bind()?;
+        let _supervision = SupervisionListener::from_environment(SupervisionProfile::terminal())
+            .map(SupervisionListener::spawn)
+            .transpose()?;
         eprintln!(
             "persona-terminal-supervisor socket={}",
             bound.socket.display()

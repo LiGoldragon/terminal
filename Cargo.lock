@@ -469,6 +469,7 @@ dependencies = [
  "sema",
  "signal-core",
  "signal-hook",
+ "signal-persona",
  "signal-persona-terminal",
  "terminal-cell",
  "thiserror 2.0.18",
@@ -804,6 +805,27 @@ checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
 dependencies = [
  "errno",
  "libc",
+]
+
+[[package]]
+name = "signal-persona"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/signal-persona.git#6baee1abcafbfc1e84e5ecc4a51292d959c4bd15"
+dependencies = [
+ "nota-codec",
+ "rkyv",
+ "signal-core",
+ "signal-persona-auth",
+]
+
+[[package]]
+name = "signal-persona-auth"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/signal-persona-auth.git#b62016a90ec9e1f3af5dd064568be3c33756203e"
+dependencies = [
+ "nota-codec",
+ "rkyv",
+ "signal-core",
 ]
 
 [[package]]
