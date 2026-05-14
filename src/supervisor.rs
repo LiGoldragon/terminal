@@ -15,12 +15,14 @@ use signal_persona_terminal::{
 
 use crate::contract::TerminalTransportBinding;
 use crate::error::{Error, Result};
+use crate::socket::SocketMode;
 use crate::tables::{StoreLocation, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorDaemon {
     socket: PathBuf,
     store: StoreLocation,
+    socket_mode: Option<SocketMode>,
 }
 
 impl TerminalSupervisorDaemon {
@@ -28,11 +30,17 @@ impl TerminalSupervisorDaemon {
         Self {
             socket: socket.into(),
             store: StoreLocation::from_environment(),
+            socket_mode: SocketMode::from_environment(),
         }
     }
 
     pub fn with_store(mut self, store: StoreLocation) -> Self {
         self.store = store;
+        self
+    }
+
+    pub fn with_socket_mode(mut self, socket_mode: SocketMode) -> Self {
+        self.socket_mode = Some(socket_mode);
         self
     }
 
@@ -59,6 +67,9 @@ impl TerminalSupervisorDaemon {
         }
         let _ = std::fs::remove_file(&self.socket);
         let listener = UnixListener::bind(&self.socket)?;
+        if let Some(socket_mode) = self.socket_mode {
+            socket_mode.apply_to(&self.socket)?;
+        }
         let runtime = tokio::runtime::Runtime::new()?;
         let supervisor = runtime.block_on(TerminalSupervisor::start(self.store));
         Ok(BoundTerminalSupervisorDaemon {

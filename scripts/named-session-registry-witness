@@ -28,6 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+export PERSONA_SOCKET_MODE=600
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-daemon" \
   --store "$store" \
   --name operator \
@@ -46,6 +47,7 @@ done
 
 test -S "$socket"
 grep -Fq "persona-terminal-daemon socket=$socket" "$stdout"
+test "$(stat -c '%a' "$socket")" = "600"
 
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-sessions" --store "$store" >"$sessions"
 expected_row="$(printf 'operator\t%s\tready' "$socket")"

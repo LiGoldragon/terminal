@@ -58,7 +58,8 @@ flowchart LR
 `signal-persona::SupervisionRequest` from a canonical `SupervisionPhase`
 Kameo actor alongside `TerminalSignalControl`. The daemon reads its
 `signal-persona::SpawnEnvelope` at startup, binds `terminal.sock` at mode
-0600, and proceeds. Unbuilt domain operations reply
+0600 by applying the `PERSONA_SOCKET_MODE` value from the Persona spawn
+envelope, and proceeds. Unbuilt domain operations reply
 `TerminalEvent::TerminalRequestUnimplemented`.
 
 **Prompt-pattern lifecycle**. `persona-harness` registers a per-adapter
@@ -181,6 +182,8 @@ the redb file, table declarations, write sequencing, and read consistency.
 - The supervisor binary accepts explicit `--socket` / `--store` overrides for
   tests, but the engine path is the Persona spawn envelope:
   `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
+- Engine-spawned terminal sockets apply the managed `PERSONA_SOCKET_MODE`
+  before accepting client traffic.
 - Supervisor-request state is committed around the terminal effect:
   `delivery_attempts` before forwarding, `terminal_events` after the typed
   event returns. Viewer attachments, session health, and session archive records
@@ -218,7 +221,9 @@ the redb file, table declarations, write sequencing, and read consistency.
   transport contains only byte transport.
 - Component Sema registry: start or register a named terminal session, read it
   back with the session inspection CLI, and prove the socket path came from the
-  Sema table. The flake exposes this stateful witness as
+  Sema table. The same witness sets `PERSONA_SOCKET_MODE=600` before launching
+  `persona-terminal-daemon` and verifies the terminal-cell socket metadata. The
+  flake exposes this stateful witness as
   `nix run .#test-named-session-registry`.
 - Signal-to-terminal-cell: start a real terminal-cell-backed daemon, resolve
   its named socket from Sema, send `TerminalConnection`, `TerminalInput`, and
@@ -252,6 +257,8 @@ the redb file, table declarations, write sequencing, and read consistency.
 - Spawn-envelope startup: construct `persona-terminal-supervisor` without CLI
   path arguments and prove it resolves its socket and component Sema path from
   `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
+- Supervisor socket mode: bind `persona-terminal-supervisor` with an explicit
+  managed socket mode and prove the real Unix socket metadata is mode 0600.
 - T6 table coverage: write and read `delivery_attempts`, `terminal_events`,
   `viewer_attachments`, `session_health`, and `session_archive` through
   `TerminalTables`; the default flake check runs this witness.

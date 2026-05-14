@@ -1,10 +1,12 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use persona_terminal::SocketMode;
 use persona_terminal::registry::SessionRegistration;
 use persona_terminal::supervisor::{
     TerminalSupervisorCommandLine, TerminalSupervisorDaemon, TerminalSupervisorFrameCodec,
@@ -97,6 +99,24 @@ impl Drop for EnvironmentRestore {
             }
         }
     }
+}
+
+#[test]
+fn terminal_supervisor_daemon_applies_spawn_envelope_socket_mode() {
+    let fixture = SupervisorFixture::new("socket-mode");
+    let supervisor = TerminalSupervisorDaemon::from_socket(fixture.supervisor_socket())
+        .with_store(fixture.store())
+        .with_socket_mode(SocketMode::from_octal(0o600))
+        .bind()
+        .expect("supervisor binds before client connects");
+
+    let mode = fs::metadata(supervisor.socket())
+        .expect("supervisor socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(mode, 0o600);
 }
 
 #[test]

@@ -26,6 +26,7 @@ use tokio::runtime::{Builder, Handle};
 use crate::error::{Error, Result};
 use crate::registry::SessionRegistration;
 use crate::signal_control::{TerminalSignalControl, TerminalSignalControlRequest};
+use crate::socket::SocketMode;
 use crate::tables::StoreLocation;
 
 const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
@@ -35,6 +36,7 @@ pub struct DaemonRequest {
     socket: PathBuf,
     command: TerminalCommand,
     registration: Option<SessionRegistration>,
+    socket_mode: Option<SocketMode>,
 }
 
 impl DaemonRequest {
@@ -50,6 +52,7 @@ impl DaemonRequest {
                 self.socket,
                 TerminalLaunch::new(self.command, TerminalSize::new(24, 80)),
                 self.registration,
+                self.socket_mode,
             )
             .run(),
         )
@@ -60,6 +63,7 @@ struct TerminalCellDaemon {
     socket: PathBuf,
     launch: TerminalLaunch,
     registration: Option<SessionRegistration>,
+    socket_mode: Option<SocketMode>,
 }
 
 impl TerminalCellDaemon {
@@ -67,11 +71,13 @@ impl TerminalCellDaemon {
         socket: PathBuf,
         launch: TerminalLaunch,
         registration: Option<SessionRegistration>,
+        socket_mode: Option<SocketMode>,
     ) -> Self {
         Self {
             socket,
             launch,
             registration,
+            socket_mode,
         }
     }
 
@@ -93,6 +99,9 @@ impl TerminalCellDaemon {
 
         TerminalSocketFile::new(self.socket.as_path()).prepare()?;
         let listener = UnixListener::bind(&self.socket)?;
+        if let Some(socket_mode) = self.socket_mode {
+            socket_mode.apply_to(&self.socket)?;
+        }
         if let Some(registration) = &self.registration {
             registration.record()?;
         }
@@ -177,6 +186,7 @@ impl DaemonArguments {
             socket: self.socket,
             command: self.command,
             registration,
+            socket_mode: SocketMode::from_environment(),
         }
     }
 

@@ -188,6 +188,14 @@
               inherit (context) cargoArtifacts;
             }
           );
+          terminal-supervisor-applies-spawn-envelope-socket-mode =
+            context.craneLib.cargoTest (
+              context.commonArgs
+              // {
+                inherit (context) cargoArtifacts;
+                cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_daemon_applies_spawn_envelope_socket_mode -- --exact";
+              }
+            );
           terminal-supervisor-socket-routes-through-component-sema = context.craneLib.cargoTest (
             context.commonArgs
             // {
