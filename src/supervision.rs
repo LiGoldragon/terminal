@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_core::{FrameBody, Reply, Request};
+use signal_core::{FrameBody, Reply};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHealthReport, ComponentHello,
     ComponentIdentity, ComponentKind, ComponentName, ComponentReadinessQuery, ComponentReady,
@@ -250,7 +250,7 @@ impl SupervisionFrameCodec {
     fn read_request(&self, reader: &mut impl Read) -> std::io::Result<SupervisionRequest> {
         let frame = self.read_frame(reader)?;
         match frame.into_body() {
-            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
+            FrameBody::Request(request) => request.into_payload_checked().map_err(io_error),
             other => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("unexpected supervision frame body: {other:?}"),

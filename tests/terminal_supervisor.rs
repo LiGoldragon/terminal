@@ -14,17 +14,18 @@ use persona_terminal::supervisor::{
 };
 use persona_terminal::tables::{StoreLocation, TerminalTables};
 use persona_terminal::{SocketMode, SupervisionFrameCodec};
-use signal_core::{FrameBody, Request};
+use signal_core::{FrameBody, Request, SignalVerb};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
     ComponentReadinessQuery, SupervisionFrame, SupervisionProtocolVersion, SupervisionReply,
     SupervisionRequest,
 };
 use signal_persona_terminal::{
-    PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
-    RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
-    TerminalEvent, TerminalName, TerminalWorkerKind, TerminalWorkerLifecycle,
-    TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot, TerminalWorkerStopReason,
+    Frame as TerminalFrame, PromptPattern, PromptPatternBytes, PromptPatternId,
+    PromptPatternRegistered, RegisterPromptPattern, SubscribeTerminalWorkerLifecycle,
+    TerminalDeliveryAttemptState, TerminalEvent, TerminalName, TerminalWorkerKind,
+    TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
+    TerminalWorkerStopReason,
 };
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
@@ -129,6 +130,25 @@ fn terminal_supervisor_daemon_applies_spawn_envelope_socket_mode() {
         & 0o777;
 
     assert_eq!(mode, 0o600);
+}
+
+#[test]
+fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
+    let frame = TerminalFrame::new(FrameBody::Request(Request::unchecked_operation(
+        SignalVerb::Match,
+        RegisterPromptPattern {
+            terminal: TerminalName::new("operator"),
+            pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"ready> ".to_vec())),
+        }
+        .into(),
+    )));
+    let bytes = frame.encode_length_prefixed().expect("frame encodes");
+    let mut input = bytes.as_slice();
+    let error = TerminalSupervisorFrameCodec::default()
+        .read_request(&mut input)
+        .expect_err("mismatched verb is rejected");
+
+    assert!(error.to_string().contains("signal verb mismatch"));
 }
 
 #[test]

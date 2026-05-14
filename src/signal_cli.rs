@@ -304,7 +304,13 @@ impl TerminalSignalRequestFrame {
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
-            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
+            FrameBody::Request(request) => {
+                request
+                    .into_payload_checked()
+                    .map_err(|error| Error::InvalidArgument {
+                        detail: error.to_string(),
+                    })
+            }
             other => Err(Error::InvalidArgument {
                 detail: format!("unexpected signal request frame: {other:?}"),
             }),

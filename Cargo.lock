@@ -769,7 +769,7 @@ checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#aa7a0d93ca8f516557c2be789f8556a7aec66da7"
+source = "git+https://github.com/LiGoldragon/signal-core.git#fddfe8a69029bb1a20200b60da6cf7d4d021b3ae"
 dependencies = [
  "nota-codec",
  "rkyv",
