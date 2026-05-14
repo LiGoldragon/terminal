@@ -268,7 +268,7 @@ impl TerminalSupervisorFrameCodec {
     }
 
     pub fn write_request(&self, writer: &mut impl Write, request: TerminalRequest) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::Request(Request::assert(request)));
+        let frame = TerminalFrame::new(FrameBody::Request(Request::from_payload(request)));
         let bytes = frame.encode_length_prefixed()?;
         writer.write_all(&bytes)?;
         writer.flush()?;

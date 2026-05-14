@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_core::{Reply, Request, SemaVerb};
+use signal_core::{Reply, Request};
 use signal_persona_terminal::{
     AcquireInputGate, Frame, FrameBody, GateAcquired, GateBusy, GateReleased, InjectionAck,
     InjectionRejected, InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns,
@@ -300,14 +300,11 @@ impl TerminalSignalRequestFrame {
     }
 
     fn into_request(self) -> Result<TerminalRequest> {
-        let frame = Frame::new(FrameBody::Request(Request::assert(self.request)));
+        let frame = Frame::new(FrameBody::Request(Request::from_payload(self.request)));
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
-            FrameBody::Request(Request::Operation {
-                verb: SemaVerb::Assert,
-                payload,
-            }) => Ok(payload),
+            FrameBody::Request(Request::Operation { payload, .. }) => Ok(payload),
             other => Err(Error::InvalidArgument {
                 detail: format!("unexpected signal request frame: {other:?}"),
             }),

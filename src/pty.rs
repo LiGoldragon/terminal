@@ -8,7 +8,6 @@ use std::thread;
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size as terminal_size};
 use kameo::actor::{ActorRef, Spawn};
-use signal_core::SemaVerb;
 use signal_hook::consts::signal::SIGWINCH;
 use signal_hook::iterator::Signals;
 use signal_persona_terminal as terminal_signal;
@@ -843,7 +842,9 @@ impl TerminalSocket {
         &self,
         request: terminal_signal::TerminalRequest,
     ) -> Result<terminal_signal::TerminalEvent> {
-        Ok(self.client.send_signal_request(SemaVerb::Assert, request)?)
+        Ok(self
+            .client
+            .send_signal_request(request.signal_verb(), request)?)
     }
 }
 

@@ -422,7 +422,7 @@ dependencies = [
 [[package]]
 name = "nota-derive"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/nota-derive.git?branch=main#0d1c24086ae585c84ad92317bb8c463b8cc95697"
+source = "git+https://github.com/LiGoldragon/nota-derive.git?branch=main#e24e50afe110810db50a7eb8f9a7963c6761c0af"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -768,7 +768,7 @@ checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 [[package]]
 name = "signal-core"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#9f4e20b4917aa1655004b3701ecbf5bce0eac071"
+source = "git+https://github.com/LiGoldragon/signal-core.git#aa7a0d93ca8f516557c2be789f8556a7aec66da7"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -809,7 +809,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#fa342d0148e8ea16c3716e9db2da092f9723bca8"
+source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#b9b36ae626a26ca333693c0e592b6f7870e8d2a3"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#5d3babb806f4fe0359ac0831a4b06ab5769bc3f8"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#e837a468007aea69d56d77a18e34bdfe75e48ca6"
 dependencies = [
  "crossterm",
  "kameo",
