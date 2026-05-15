@@ -6,7 +6,10 @@ use std::path::PathBuf;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_core::{FrameBody, Reply, Request};
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Reply, Request,
+    SessionEpoch, SignalVerb, SubReply,
+};
 use signal_persona_terminal::{
     Frame as TerminalFrame, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation,
     TerminalEvent, TerminalEventObservation, TerminalName, TerminalObservationSequence,
@@ -18,6 +21,14 @@ use crate::error::{Error, Result};
 use crate::socket::SocketMode;
 use crate::supervision::{SupervisionListener, SupervisionProfile};
 use crate::tables::{StoreLocation, TerminalTables};
+
+fn synthetic_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        ExchangeSequence::first(),
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorDaemon {
@@ -264,13 +275,10 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn read_request(&self, reader: &mut impl Read) -> Result<TerminalRequest> {
         match self.read_frame(reader)?.into_body() {
-            FrameBody::Request(request) => {
-                request
-                    .into_payload_checked()
-                    .map_err(|error| Error::UnexpectedSignalFrame {
-                        got: error.to_string(),
-                    })
-            }
+            FrameBody::Request { request, .. } => request
+                .into_checked()
+                .map_err(|(reason, _)| Error::InvalidSignalRequest { reason })
+                .map(|checked| checked.operations.into_head().payload),
             other => Err(Error::UnexpectedSignalFrame {
                 got: format!("{other:?}"),
             }),
@@ -278,7 +286,10 @@ impl TerminalSupervisorFrameCodec {
     }
 
     pub fn write_request(&self, writer: &mut impl Write, request: TerminalRequest) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::Request(Request::from_payload(request)));
+        let frame = TerminalFrame::new(FrameBody::Request {
+            exchange: synthetic_exchange(),
+            request: Request::from_payload(request),
+        });
         let bytes = frame.encode_length_prefixed()?;
         writer.write_all(&bytes)?;
         writer.flush()?;
@@ -286,7 +297,13 @@ impl TerminalSupervisorFrameCodec {
     }
 
     pub fn write_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::Reply(Reply::operation(event)));
+        let frame = TerminalFrame::new(FrameBody::Reply {
+            exchange: synthetic_exchange(),
+            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
+                verb: SignalVerb::Subscribe,
+                payload: event,
+            })),
+        });
         let bytes = frame.encode_length_prefixed()?;
         writer.write_all(&bytes)?;
         writer.flush()?;
@@ -295,7 +312,17 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalEvent> {
         match self.read_frame(reader)?.into_body() {
-            FrameBody::Reply(Reply::Operation(event)) => Ok(event),
+            FrameBody::Reply { reply, .. } => match reply {
+                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
+                    SubReply::Ok { payload, .. } => Ok(payload),
+                    other => Err(Error::UnexpectedSignalFrame {
+                        got: format!("{other:?}"),
+                    }),
+                },
+                Reply::Rejected { reason } => Err(Error::UnexpectedSignalFrame {
+                    got: format!("{reason:?}"),
+                }),
+            },
             other => Err(Error::UnexpectedSignalFrame {
                 got: format!("{other:?}"),
             }),

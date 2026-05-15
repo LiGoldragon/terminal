@@ -25,6 +25,11 @@ pub enum Error {
     #[error("unexpected signal frame: {got}")]
     UnexpectedSignalFrame { got: String },
 
+    #[error("signal request failed structural checks: {reason}")]
+    InvalidSignalRequest {
+        reason: signal_core::RequestRejectionReason,
+    },
+
     #[error("unknown terminal session: {terminal}")]
     UnknownTerminalSession { terminal: String },
 

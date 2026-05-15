@@ -8,6 +8,7 @@ use std::thread;
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size as terminal_size};
 use kameo::actor::{ActorRef, Spawn};
+use signal_core::RequestPayload;
 use signal_hook::consts::signal::SIGWINCH;
 use signal_hook::iterator::Signals;
 use signal_persona_terminal as terminal_signal;

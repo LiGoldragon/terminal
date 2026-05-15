@@ -14,7 +14,10 @@ use persona_terminal::supervisor::{
 };
 use persona_terminal::tables::{StoreLocation, TerminalTables};
 use persona_terminal::{SocketMode, SupervisionFrameCodec};
-use signal_core::{FrameBody, Request, SignalVerb};
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Operation, Request,
+    RequestRejectionReason, SessionEpoch, SignalVerb,
+};
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
     ComponentReadinessQuery, SupervisionFrame, SupervisionProtocolVersion, SupervisionReply,
@@ -134,7 +137,7 @@ fn terminal_supervisor_daemon_applies_spawn_envelope_socket_mode() {
 
 #[test]
 fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
-    let frame = TerminalFrame::new(FrameBody::Request(Request::unchecked_operation(
+    let request = Request::from_operations(NonEmpty::single(Operation::new(
         SignalVerb::Match,
         RegisterPromptPattern {
             terminal: TerminalName::new("operator"),
@@ -142,13 +145,25 @@ fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
         }
         .into(),
     )));
+    let frame = TerminalFrame::new(FrameBody::Request {
+        exchange: test_exchange(),
+        request,
+    });
     let bytes = frame.encode_length_prefixed().expect("frame encodes");
     let mut input = bytes.as_slice();
     let error = TerminalSupervisorFrameCodec::default()
         .read_request(&mut input)
         .expect_err("mismatched verb is rejected");
 
-    assert!(error.to_string().contains("signal verb mismatch"));
+    match error {
+        persona_terminal::Error::InvalidSignalRequest { reason } => {
+            assert_eq!(
+                reason,
+                RequestRejectionReason::VerbPayloadMismatch { index: 0 }
+            );
+        }
+        other => panic!("expected typed signal request rejection, got {other:?}"),
+    }
 }
 
 #[test]
@@ -469,7 +484,10 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
 }
 
 fn write_supervision_request(stream: &mut UnixStream, request: SupervisionRequest) {
-    let frame = SupervisionFrame::new(FrameBody::Request(Request::from_payload(request)));
+    let frame = SupervisionFrame::new(FrameBody::Request {
+        exchange: test_exchange(),
+        request: Request::from_payload(request),
+    });
     let bytes = frame
         .encode_length_prefixed()
         .expect("supervision request encodes");
@@ -477,6 +495,14 @@ fn write_supervision_request(stream: &mut UnixStream, request: SupervisionReques
         .write_all(bytes.as_slice())
         .expect("supervision request writes");
     stream.flush().expect("supervision request flushes");
+}
+
+fn test_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        ExchangeSequence::first(),
+    )
 }
 
 fn wait_for_socket(socket: &PathBuf) {

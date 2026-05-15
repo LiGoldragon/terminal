@@ -2,7 +2,10 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_core::{Reply, Request};
+use signal_core::{
+    ExchangeIdentifier, ExchangeLane, ExchangeSequence, NonEmpty, Reply, Request, SessionEpoch,
+    SignalVerb, SubReply,
+};
 use signal_persona_terminal::{
     AcquireInputGate, Frame, FrameBody, GateAcquired, GateBusy, GateReleased, InjectionAck,
     InjectionRejected, InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns,
@@ -20,6 +23,14 @@ use crate::{Error, Result};
 
 const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
 const DEFAULT_TERMINAL: &str = "operator";
+
+fn synthetic_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        ExchangeSequence::first(),
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSignalRequest {
@@ -300,17 +311,17 @@ impl TerminalSignalRequestFrame {
     }
 
     fn into_request(self) -> Result<TerminalRequest> {
-        let frame = Frame::new(FrameBody::Request(Request::from_payload(self.request)));
+        let frame = Frame::new(FrameBody::Request {
+            exchange: synthetic_exchange(),
+            request: Request::from_payload(self.request),
+        });
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
-            FrameBody::Request(request) => {
-                request
-                    .into_payload_checked()
-                    .map_err(|error| Error::InvalidArgument {
-                        detail: error.to_string(),
-                    })
-            }
+            FrameBody::Request { request, .. } => request
+                .into_checked()
+                .map_err(|(reason, _)| Error::InvalidSignalRequest { reason })
+                .map(|checked| checked.operations.into_head().payload),
             other => Err(Error::InvalidArgument {
                 detail: format!("unexpected signal request frame: {other:?}"),
             }),
@@ -328,11 +339,27 @@ impl TerminalSignalEventFrame {
     }
 
     fn into_event(self) -> Result<TerminalEvent> {
-        let frame = Frame::new(FrameBody::Reply(Reply::operation(self.event)));
+        let frame = Frame::new(FrameBody::Reply {
+            exchange: synthetic_exchange(),
+            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
+                verb: SignalVerb::Subscribe,
+                payload: self.event,
+            })),
+        });
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
-            FrameBody::Reply(Reply::Operation(event)) => Ok(event),
+            FrameBody::Reply { reply, .. } => match reply {
+                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
+                    SubReply::Ok { payload, .. } => Ok(payload),
+                    other => Err(Error::InvalidArgument {
+                        detail: format!("unexpected signal sub-reply: {other:?}"),
+                    }),
+                },
+                Reply::Rejected { reason } => Err(Error::InvalidArgument {
+                    detail: format!("signal reply rejected: {reason:?}"),
+                }),
+            },
             other => Err(Error::InvalidArgument {
                 detail: format!("unexpected signal reply frame: {other:?}"),
             }),
