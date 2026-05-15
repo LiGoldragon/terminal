@@ -621,6 +621,7 @@ impl TerminalRequestTerminal {
             TerminalRequest::ReleaseInputGate(payload) => payload.terminal.clone(),
             TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
             TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
+            TerminalRequest::TerminalWorkerLifecycleRetraction(payload) => payload.terminal.clone(),
         };
         Self { terminal }
     }

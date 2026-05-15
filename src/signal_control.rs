@@ -128,6 +128,13 @@ impl TerminalSignalControl {
                 }
                 .into())
             }
+            terminal_signal::TerminalRequest::TerminalWorkerLifecycleRetraction(token) => {
+                Ok(terminal_signal::TerminalRejected {
+                    terminal: token.terminal,
+                    reason: terminal_signal::TerminalRejectionReason::TransportFailed,
+                }
+                .into())
+            }
         }
     }
 

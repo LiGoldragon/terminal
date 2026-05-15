@@ -542,7 +542,13 @@ impl TerminalCellConnection {
         )?;
 
         while let Some(event) = lifecycle.blocking_next_live_event() {
-            SocketReplyWriter::new(&mut self.stream).write_signal_event(
+            // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
+            // belongs to the streaming TerminalEvent enum, not the
+            // direct-reply TerminalReply enum. terminal-cell exposes
+            // `write_signal_subscription_event` for this path; the
+            // persona-terminal supervisor is a passthrough so it
+            // wraps the same way.
+            SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
                 terminal_signal::TerminalWorkerLifecycleEvent {
                     terminal: subscription.terminal.clone(),
                     observation: TerminalSignalControl::worker_lifecycle(event),
@@ -842,7 +848,7 @@ impl TerminalSocket {
     pub fn signal(
         &self,
         request: terminal_signal::TerminalRequest,
-    ) -> Result<terminal_signal::TerminalEvent> {
+    ) -> Result<terminal_signal::TerminalReply> {
         Ok(self
             .client
             .send_signal_request(request.signal_verb(), request)?)

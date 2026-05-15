@@ -101,6 +101,11 @@ impl TerminalTransportBinding {
                     subscription.terminal.clone(),
                     TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription),
                 ),
+            TerminalRequest::TerminalWorkerLifecycleRetraction(token) => self
+                .handle_signal_control(
+                    token.terminal.clone(),
+                    TerminalRequest::TerminalWorkerLifecycleRetraction(token),
+                ),
         }
     }
 
