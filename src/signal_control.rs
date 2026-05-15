@@ -9,7 +9,8 @@ use signal_persona_terminal as terminal_signal;
 use terminal_cell::{
     InputSource, TerminalCell, TerminalCellError, TerminalInput, TerminalInputGateLease,
     TerminalInputGateSequence, TerminalInputPort, TerminalSize, TerminalWorkerKind,
-    TerminalWorkerLifecycle, TerminalWorkerStop, TranscriptSnapshotRequest,
+    TerminalWorkerLifecycle, TerminalWorkerObservationRequest, TerminalWorkerStop,
+    TranscriptSnapshotRequest,
 };
 
 #[derive(Debug)]
@@ -19,6 +20,7 @@ pub struct TerminalSignalControl {
     next_prompt_pattern: u64,
     prompt_patterns: HashMap<String, terminal_signal::PromptPattern>,
     signal_leases: HashMap<u64, terminal_signal::PromptState>,
+    lifecycle_subscriptions: Vec<terminal_signal::TerminalWorkerLifecycleToken>,
 }
 
 impl TerminalSignalControl {
@@ -29,6 +31,7 @@ impl TerminalSignalControl {
             next_prompt_pattern: 1,
             prompt_patterns: HashMap::new(),
             signal_leases: HashMap::new(),
+            lifecycle_subscriptions: Vec::new(),
         }
     }
 
@@ -122,19 +125,65 @@ impl TerminalSignalControl {
                 self.write_injection(injection).await
             }
             terminal_signal::TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) => {
-                Ok(terminal_signal::TerminalRejected {
-                    terminal: subscription.terminal,
-                    reason: terminal_signal::TerminalRejectionReason::TransportFailed,
-                }
-                .into())
+                self.open_worker_lifecycle_subscription(subscription).await
             }
             terminal_signal::TerminalRequest::TerminalWorkerLifecycleRetraction(token) => {
-                Ok(terminal_signal::TerminalRejected {
-                    terminal: token.terminal,
-                    reason: terminal_signal::TerminalRejectionReason::TransportFailed,
-                }
-                .into())
+                Ok(self.close_worker_lifecycle_subscription(token))
             }
+        }
+    }
+
+    async fn open_worker_lifecycle_subscription(
+        &mut self,
+        subscription: terminal_signal::SubscribeTerminalWorkerLifecycle,
+    ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
+        let token = terminal_signal::TerminalWorkerLifecycleToken {
+            terminal: subscription.terminal.clone(),
+        };
+        if !self.lifecycle_subscriptions.contains(&token) {
+            self.lifecycle_subscriptions.push(token);
+        }
+        let observation = self
+            .terminal
+            .ask(TerminalWorkerObservationRequest)
+            .await
+            .map_err(TerminalSignalControlFailure::from_actor_send)?;
+        let observations = observation
+            .events()
+            .iter()
+            .cloned()
+            .map(Self::worker_lifecycle)
+            .collect();
+        Ok(terminal_signal::TerminalWorkerLifecycleSnapshot {
+            terminal: subscription.terminal,
+            observations,
+        }
+        .into())
+    }
+
+    fn close_worker_lifecycle_subscription(
+        &mut self,
+        token: terminal_signal::TerminalWorkerLifecycleToken,
+    ) -> terminal_signal::TerminalReply {
+        let position = self
+            .lifecycle_subscriptions
+            .iter()
+            .position(|existing| existing == &token);
+        match position {
+            Some(index) => {
+                self.lifecycle_subscriptions.remove(index);
+                terminal_signal::TerminalDetached {
+                    terminal: token.terminal,
+                    generation: terminal_signal::TerminalGeneration::new(1),
+                    reason: terminal_signal::TerminalDetachmentReason::HumanRequested,
+                }
+                .into()
+            }
+            None => terminal_signal::TerminalRejected {
+                terminal: token.terminal,
+                reason: terminal_signal::TerminalRejectionReason::NotConnected,
+            }
+            .into(),
         }
     }
 
