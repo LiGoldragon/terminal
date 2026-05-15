@@ -3,8 +3,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, RequestPayload,
-    SessionEpoch, SignalVerb, SubReply,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
+    SignalVerb, SubReply,
 };
 use signal_persona_terminal::{
     AcquireInputGate, GateAcquired, GateBusy, GateReleased, InjectionAck, InjectionRejected,

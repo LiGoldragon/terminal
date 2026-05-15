@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use persona_terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
 use persona_terminal::supervisor::TerminalSupervisorFrameCodec;
-use signal_persona_terminal::{TerminalConnection, TerminalEvent, TerminalName, TerminalReady};
+use signal_persona_terminal::{TerminalConnection, TerminalName, TerminalReady, TerminalReply};
 
 struct SignalFixture {
     root: PathBuf,
@@ -63,7 +63,7 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
         codec
             .write_event(
                 stream,
-                TerminalEvent::from(TerminalReady {
+                TerminalReply::from(TerminalReady {
                     terminal: TerminalName::new("operator"),
                     generation: signal_persona_terminal::TerminalGeneration::new(1),
                 }),

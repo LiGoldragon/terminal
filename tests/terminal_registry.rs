@@ -7,11 +7,11 @@ use persona_terminal::registry::SessionRegistration;
 use persona_terminal::registry::SessionResolveRequest;
 use persona_terminal::tables::{StoreLocation, TerminalTables};
 use signal_persona_terminal::{
-    TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEvent,
-    TerminalEventObservation, TerminalGeneration, TerminalName, TerminalObservationSequence,
-    TerminalOperationKind, TerminalReady, TerminalSessionArchiveObservation,
-    TerminalSessionArchiveState, TerminalSessionHealthObservation, TerminalSessionObservation,
-    TerminalSessionState, TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
+    TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEventObservation,
+    TerminalGeneration, TerminalName, TerminalObservationSequence, TerminalOperationKind,
+    TerminalReady, TerminalReply, TerminalSessionArchiveObservation, TerminalSessionArchiveState,
+    TerminalSessionHealthObservation, TerminalSessionObservation, TerminalSessionState,
+    TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
 };
 
 struct RegistryFixture {
@@ -117,7 +117,7 @@ fn terminal_tables_cover_t6_state_records() {
         .put_terminal_event(&TerminalEventObservation::new(
             TerminalObservationSequence::new(1),
             terminal.clone(),
-            TerminalEvent::from(TerminalReady {
+            TerminalReply::from(TerminalReady {
                 terminal: terminal.clone(),
                 generation: TerminalGeneration::new(1),
             }),

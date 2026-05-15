@@ -15,20 +15,20 @@ use persona_terminal::supervisor::{
 use persona_terminal::tables::{StoreLocation, TerminalTables};
 use persona_terminal::{SocketMode, SupervisionFrameCodec};
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Operation, Request,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Operation, Request,
     RequestRejectionReason, SessionEpoch, SignalVerb,
 };
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
-    ComponentReadinessQuery, SupervisionFrame, SupervisionProtocolVersion, SupervisionReply,
-    SupervisionRequest,
+    ComponentReadinessQuery, SupervisionFrame, SupervisionFrameBody, SupervisionProtocolVersion,
+    SupervisionReply, SupervisionRequest,
 };
 use signal_persona_terminal::{
-    Frame as TerminalFrame, PromptPattern, PromptPatternBytes, PromptPatternId,
-    PromptPatternRegistered, RegisterPromptPattern, SubscribeTerminalWorkerLifecycle,
-    TerminalDeliveryAttemptState, TerminalEvent, TerminalName, TerminalWorkerKind,
-    TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
-    TerminalWorkerStopReason,
+    PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
+    RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
+    TerminalEvent, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName, TerminalReply,
+    TerminalWorkerKind, TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent,
+    TerminalWorkerLifecycleSnapshot, TerminalWorkerStopReason,
 };
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
@@ -198,7 +198,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
             codec
                 .write_event(
                     stream,
-                    TerminalEvent::from(PromptPatternRegistered {
+                    TerminalReply::from(PromptPatternRegistered {
                         terminal,
                         pattern_id: PromptPatternId::new("from-cell"),
                     }),
@@ -237,14 +237,14 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
 
     assert_eq!(
         event,
-        TerminalEvent::from(PromptPatternRegistered {
+        TerminalReply::from(PromptPatternRegistered {
             terminal,
             pattern_id: PromptPatternId::new("from-cell"),
         })
     );
     assert_eq!(
         served.join().expect("supervisor server joins"),
-        TerminalEvent::from(PromptPatternRegistered {
+        TerminalReply::from(PromptPatternRegistered {
             terminal: TerminalName::new("operator"),
             pattern_id: PromptPatternId::new("from-cell"),
         })
@@ -263,7 +263,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
     assert_eq!(events.len(), 1);
     assert_eq!(
         events[0].event(),
-        &TerminalEvent::from(PromptPatternRegistered {
+        &TerminalReply::from(PromptPatternRegistered {
             terminal: TerminalName::new("operator"),
             pattern_id: PromptPatternId::new("from-cell"),
         })
@@ -390,7 +390,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
             codec
                 .write_event(
                     stream,
-                    TerminalEvent::from(TerminalWorkerLifecycleSnapshot {
+                    TerminalReply::from(TerminalWorkerLifecycleSnapshot {
                         terminal: terminal.clone(),
                         observations: vec![TerminalWorkerLifecycle::Started(
                             TerminalWorkerKind::OutputReader,
@@ -399,7 +399,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
                 )
                 .expect("fake cell writes lifecycle snapshot");
             codec
-                .write_event(
+                .write_stream_event(
                     stream,
                     TerminalEvent::from(TerminalWorkerLifecycleEvent {
                         terminal,
@@ -440,12 +440,12 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
         .read_event(&mut stream)
         .expect("client reads initial lifecycle state");
     let delta = codec
-        .read_event(&mut stream)
+        .read_stream_event(&mut stream)
         .expect("client reads lifecycle delta");
 
     assert_eq!(
         snapshot,
-        TerminalEvent::from(TerminalWorkerLifecycleSnapshot {
+        TerminalReply::from(TerminalWorkerLifecycleSnapshot {
             terminal: TerminalName::new("responder"),
             observations: vec![TerminalWorkerLifecycle::Started(
                 TerminalWorkerKind::OutputReader,
@@ -477,14 +477,13 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     let events = tables
         .terminal_event_records()
         .expect("terminal events are readable");
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 1);
     assert_eq!(events[0].event(), &snapshot);
-    assert_eq!(events[1].event(), &delta);
     cell.join().expect("fake cell joins");
 }
 
 fn write_supervision_request(stream: &mut UnixStream, request: SupervisionRequest) {
-    let frame = SupervisionFrame::new(FrameBody::Request {
+    let frame = SupervisionFrame::new(SupervisionFrameBody::Request {
         exchange: test_exchange(),
         request: Request::from_payload(request),
     });
@@ -501,7 +500,7 @@ fn test_exchange() -> ExchangeIdentifier {
     ExchangeIdentifier::new(
         SessionEpoch::new(0),
         ExchangeLane::Connector,
-        ExchangeSequence::first(),
+        LaneSequence::first(),
     )
 }
 

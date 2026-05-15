@@ -7,11 +7,11 @@ use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, RequestPayload,
-    SessionEpoch, SignalVerb, SubReply,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
+    SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
 use signal_persona_terminal::{
-    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation,
+    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation, TerminalEvent,
     TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
     TerminalObservationSequence, TerminalOperationKind, TerminalRejected, TerminalRejectionReason,
     TerminalReply, TerminalRequest,
@@ -27,6 +27,14 @@ fn synthetic_exchange() -> ExchangeIdentifier {
     ExchangeIdentifier::new(
         SessionEpoch::new(0),
         ExchangeLane::Connector,
+        LaneSequence::first(),
+    )
+}
+
+fn synthetic_stream_event() -> StreamEventIdentifier {
+    StreamEventIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Acceptor,
         LaneSequence::first(),
     )
 }
@@ -118,7 +126,7 @@ impl TerminalSupervisorDaemon {
                     detail: error.to_string(),
                 })
         })?;
-        connection.write_signal_event(event.clone())?;
+        connection.write_signal_reply(event.clone())?;
         Ok(event)
     }
 
@@ -138,7 +146,7 @@ impl TerminalSupervisorDaemon {
         })?;
         match start {
             TerminalSupervisorSubscriptionStart::Immediate(event) => {
-                client.write_signal_event(event.clone())?;
+                client.write_signal_reply(event.clone())?;
                 Ok(event)
             }
             TerminalSupervisorSubscriptionStart::Stream(plan) => {
@@ -162,25 +170,32 @@ impl TerminalSupervisorDaemon {
 
         let mut first = None;
         loop {
-            let event = match codec.read_event(&mut cell) {
-                Ok(event) => event,
+            let output = match codec.read_output(&mut cell) {
+                Ok(output) => output,
                 Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
                     break;
                 }
                 Err(error) => return Err(error),
             };
-            runtime.block_on(async {
-                supervisor
-                    .ask(TerminalSupervisorObservedEvent::new(event.clone()))
-                    .await
-                    .map_err(|error| Error::ActorCall {
-                        detail: error.to_string(),
-                    })
-            })?;
-            if first.is_none() {
-                first = Some(event.clone());
+            match output {
+                TerminalSupervisorSignalOutput::Reply(event) => {
+                    runtime.block_on(async {
+                        supervisor
+                            .ask(TerminalSupervisorObservedEvent::new(event.clone()))
+                            .await
+                            .map_err(|error| Error::ActorCall {
+                                detail: error.to_string(),
+                            })
+                    })?;
+                    if first.is_none() {
+                        first = Some(event.clone());
+                    }
+                    client.write_signal_reply(event)?;
+                }
+                TerminalSupervisorSignalOutput::Event(event) => {
+                    client.write_signal_stream_event(event)?;
+                }
             }
-            client.write_signal_event(event)?;
         }
         first.ok_or_else(|| Error::UnexpectedSignalFrame {
             got: "subscription ended before initial state".to_string(),
@@ -240,9 +255,14 @@ impl TerminalSupervisorConnection {
         self.signal.read_request(&mut self.stream)
     }
 
-    pub fn write_signal_event(&mut self, event: TerminalReply) -> Result<()> {
+    pub fn write_signal_reply(&mut self, event: TerminalReply) -> Result<()> {
         let stream = self.stream.get_mut();
-        self.signal.write_event(stream, event)
+        self.signal.write_reply(stream, event)
+    }
+
+    pub fn write_signal_stream_event(&mut self, event: TerminalEvent) -> Result<()> {
+        let stream = self.stream.get_mut();
+        self.signal.write_stream_event(stream, event)
     }
 }
 
@@ -298,6 +318,10 @@ impl TerminalSupervisorFrameCodec {
     }
 
     pub fn write_event(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
+        self.write_reply(writer, event)
+    }
+
+    pub fn write_reply(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
         let frame = TerminalFrame::new(FrameBody::Reply {
             exchange: synthetic_exchange(),
             reply: Reply::completed(NonEmpty::single(SubReply::Ok {
@@ -311,7 +335,23 @@ impl TerminalSupervisorFrameCodec {
         Ok(())
     }
 
+    pub fn write_stream_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
+        let frame = TerminalFrame::new(FrameBody::SubscriptionEvent {
+            event_identifier: synthetic_stream_event(),
+            token: SubscriptionTokenInner::new(1),
+            event,
+        });
+        let bytes = frame.encode_length_prefixed()?;
+        writer.write_all(&bytes)?;
+        writer.flush()?;
+        Ok(())
+    }
+
     pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalReply> {
+        self.read_reply(reader)
+    }
+
+    pub fn read_reply(&self, reader: &mut impl Read) -> Result<TerminalReply> {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
@@ -329,12 +369,51 @@ impl TerminalSupervisorFrameCodec {
             }),
         }
     }
+
+    pub fn read_stream_event(&self, reader: &mut impl Read) -> Result<TerminalEvent> {
+        match self.read_frame(reader)?.into_body() {
+            FrameBody::SubscriptionEvent { event, .. } => Ok(event),
+            other => Err(Error::UnexpectedSignalFrame {
+                got: format!("{other:?}"),
+            }),
+        }
+    }
+
+    pub fn read_output(&self, reader: &mut impl Read) -> Result<TerminalSupervisorSignalOutput> {
+        match self.read_frame(reader)?.into_body() {
+            FrameBody::Reply { reply, .. } => match reply {
+                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
+                    SubReply::Ok { payload, .. } => {
+                        Ok(TerminalSupervisorSignalOutput::Reply(payload))
+                    }
+                    other => Err(Error::UnexpectedSignalFrame {
+                        got: format!("{other:?}"),
+                    }),
+                },
+                Reply::Rejected { reason } => Err(Error::UnexpectedSignalFrame {
+                    got: format!("{reason:?}"),
+                }),
+            },
+            FrameBody::SubscriptionEvent { event, .. } => {
+                Ok(TerminalSupervisorSignalOutput::Event(event))
+            }
+            other => Err(Error::UnexpectedSignalFrame {
+                got: format!("{other:?}"),
+            }),
+        }
+    }
 }
 
 impl Default for TerminalSupervisorFrameCodec {
     fn default() -> Self {
         Self::new(1024 * 1024)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminalSupervisorSignalOutput {
+    Reply(TerminalReply),
+    Event(TerminalEvent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]

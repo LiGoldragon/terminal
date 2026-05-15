@@ -1,8 +1,8 @@
 use persona_terminal::contract::TerminalTransportBinding;
 use signal_persona_terminal::{
     TerminalConnection, TerminalDetached, TerminalDetachment, TerminalDetachmentReason,
-    TerminalEvent, TerminalInput, TerminalInputBytes, TerminalName, TerminalRejected,
-    TerminalRejectionReason, TerminalRequest, TerminalSequence, TranscriptDelta,
+    TerminalInput, TerminalInputBytes, TerminalName, TerminalRejected, TerminalRejectionReason,
+    TerminalReply, TerminalRequest, TerminalSequence, TranscriptDelta,
 };
 
 fn terminal_name() -> TerminalName {
@@ -38,7 +38,7 @@ fn terminal_contract_rejects_other_terminal_before_socket_io() {
 
     assert_eq!(
         event,
-        TerminalEvent::TerminalRejected(TerminalRejected {
+        TerminalReply::TerminalRejected(TerminalRejected {
             terminal: other_terminal,
             reason: TerminalRejectionReason::NotConnected,
         })
@@ -57,7 +57,7 @@ fn terminal_contract_detachment_is_typed_event() {
 
     assert_eq!(
         event,
-        TerminalEvent::TerminalDetached(TerminalDetached {
+        TerminalReply::TerminalDetached(TerminalDetached {
             terminal: terminal_name(),
             generation: binding.generation(),
             reason: TerminalDetachmentReason::HarnessStopped,
@@ -73,7 +73,7 @@ fn terminal_contract_transcript_delta_increments_sequence() {
 
     assert_eq!(
         first,
-        TerminalEvent::TranscriptDelta(TranscriptDelta {
+        TerminalReply::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(1),
             bytes: signal_persona_terminal::TerminalTranscriptBytes::new(b"first".to_vec()),
@@ -81,7 +81,7 @@ fn terminal_contract_transcript_delta_increments_sequence() {
     );
     assert_eq!(
         second,
-        TerminalEvent::TranscriptDelta(TranscriptDelta {
+        TerminalReply::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(2),
             bytes: signal_persona_terminal::TerminalTranscriptBytes::new(b"second".to_vec()),

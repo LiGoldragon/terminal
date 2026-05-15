@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 
 use signal_persona_terminal::{
     AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
-    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalReply, TerminalGeneration,
-    TerminalInput, TerminalInputAccepted, TerminalName, TerminalReady, TerminalRejected,
-    TerminalRejectionReason, TerminalRequest, TerminalResize, TerminalResized, TerminalSequence,
+    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput,
+    TerminalInputAccepted, TerminalName, TerminalReady, TerminalRejected, TerminalRejectionReason,
+    TerminalReply, TerminalRequest, TerminalResize, TerminalResized, TerminalSequence,
     TerminalTranscriptBytes, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
