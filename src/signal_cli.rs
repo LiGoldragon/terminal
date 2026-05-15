@@ -11,10 +11,10 @@ use signal_persona_terminal::{
     InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns, PromptPattern,
     PromptPatternBytes, PromptPatternList, PromptPatternRegistered, PromptPatternUnregistered,
     PromptState, RegisterPromptPattern, ReleaseInputGate, SubscribeTerminalWorkerLifecycle,
-    TerminalCapture, TerminalCaptured, TerminalColumns, TerminalConnection, TerminalDetached,
-    TerminalFrame as Frame, TerminalFrameBody as FrameBody, TerminalInput, TerminalInputAccepted,
-    TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected, TerminalReply,
-    TerminalRequest, TerminalResize, TerminalResized, TerminalRows,
+    SubscriptionRetracted, TerminalCapture, TerminalCaptured, TerminalColumns, TerminalConnection,
+    TerminalDetached, TerminalFrame as Frame, TerminalFrameBody as FrameBody, TerminalInput,
+    TerminalInputAccepted, TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected,
+    TerminalReply, TerminalRequest, TerminalResize, TerminalResized, TerminalRows,
     TerminalWorkerLifecycleSnapshot, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
@@ -533,6 +533,9 @@ impl TerminalEventLine {
                 terminal.as_str(),
                 observations.len()
             )?,
+            TerminalReply::SubscriptionRetracted(SubscriptionRetracted { token }) => {
+                writeln!(output, "SubscriptionRetracted\t{}", token.terminal.as_str())?
+            }
             // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
             // belongs to the streaming TerminalEvent enum — it arrives
             // via StreamingFrameBody::SubscriptionEvent, not as a

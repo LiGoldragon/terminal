@@ -172,12 +172,7 @@ impl TerminalSignalControl {
         match position {
             Some(index) => {
                 self.lifecycle_subscriptions.remove(index);
-                terminal_signal::TerminalDetached {
-                    terminal: token.terminal,
-                    generation: terminal_signal::TerminalGeneration::new(1),
-                    reason: terminal_signal::TerminalDetachmentReason::HumanRequested,
-                }
-                .into()
+                terminal_signal::SubscriptionRetracted { token }.into()
             }
             None => terminal_signal::TerminalRejected {
                 terminal: token.terminal,

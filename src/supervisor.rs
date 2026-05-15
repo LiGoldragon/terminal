@@ -724,6 +724,7 @@ impl TerminalRequestTerminal {
             TerminalReply::InjectionAck(payload) => payload.terminal.clone(),
             TerminalReply::InjectionRejected(payload) => payload.terminal.clone(),
             TerminalReply::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
+            TerminalReply::SubscriptionRetracted(payload) => payload.token.terminal.clone(),
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
             // (the streaming-event payload); routed via
             // StreamingFrameBody::SubscriptionEvent, not Reply.
