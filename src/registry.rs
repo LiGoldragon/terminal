@@ -1,7 +1,9 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_persona_terminal::{TerminalName, TerminalSessionObservation};
+use signal_persona_terminal::{
+    TerminalName, TerminalSessionHealthObservation, TerminalSessionObservation,
+};
 
 use crate::Error;
 use crate::Result;
@@ -141,6 +143,12 @@ impl SessionRegistration {
     }
 
     pub fn record(&self) -> Result<()> {
-        TerminalTables::open(&self.store)?.put_session(&self.session)
+        let tables = TerminalTables::open(&self.store)?;
+        tables.put_session(&self.session)?;
+        tables.put_session_health(&TerminalSessionHealthObservation::new(
+            self.session.terminal().clone(),
+            self.session.state(),
+            self.session.generation(),
+        ))
     }
 }

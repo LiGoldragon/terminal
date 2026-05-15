@@ -84,6 +84,15 @@ fn terminal_daemon_registration_writes_named_session() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].terminal(), &terminal);
     assert_eq!(rows[0].socket_path().as_str(), "/tmp/assistant.sock");
+
+    let health = fixture
+        .tables()
+        .session_health_records()
+        .expect("session health records are readable");
+    assert_eq!(health.len(), 1);
+    assert_eq!(health[0].terminal(), &terminal);
+    assert_eq!(health[0].state(), TerminalSessionState::Ready);
+    assert_eq!(health[0].generation(), TerminalGeneration::new(1));
 }
 
 #[test]

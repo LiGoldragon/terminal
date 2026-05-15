@@ -204,6 +204,13 @@
                 cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_answers_component_supervision_relation -- --exact";
               }
             );
+          terminal-registration-writes-session-health = context.craneLib.cargoTest (
+            context.commonArgs
+            // {
+              inherit (context) cargoArtifacts;
+              cargoTestExtraArgs = "--test terminal_registry terminal_daemon_registration_writes_named_session -- --exact";
+            }
+          );
           terminal-supervisor-socket-routes-through-component-sema = context.craneLib.cargoTest (
             context.commonArgs
             // {

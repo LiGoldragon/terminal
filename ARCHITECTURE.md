@@ -204,6 +204,8 @@ the redb file, table declarations, write sequencing, and read consistency.
   `delivery_attempts` before forwarding, `terminal_events` after the typed
   event returns. Viewer attachments, session health, and session archive records
   are first-class component Sema tables.
+- Session registration records both the named terminal session and the
+  ready-state session health row in component Sema.
 - Subscription requests are streams, not one-shot lookups. The supervisor
   resolves the named terminal once, forwards the typed subscription frame to
   the registered terminal socket, relays the initial state and each live delta,
@@ -241,6 +243,10 @@ the redb file, table declarations, write sequencing, and read consistency.
   `persona-terminal-daemon` and verifies the terminal-cell socket metadata. The
   flake exposes this stateful witness as
   `nix run .#test-named-session-registry`.
+- Session-health registration: register a named terminal session through
+  `SessionRegistration`, then read `session_health` and prove a ready row with
+  generation 1 exists. The flake exposes this as
+  `nix flake check .#terminal-registration-writes-session-health`.
 - Signal-to-terminal-cell: start a real terminal-cell-backed daemon, resolve
   its named socket from Sema, send `TerminalConnection`, `TerminalInput`, and
   `TerminalCapture` through the `signal-persona-terminal` adapter, and prove
