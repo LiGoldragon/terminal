@@ -10,9 +10,11 @@ frames between clients and the PTY. Its Persona-facing boundary is the typed
 
 `terminal-cell` is the low-level cell primitive: one child process group, one
 PTY, raw input ports, transcript replay, worker lifecycle observation, and one
-active viewer attachment. This repo is the Persona-facing owner around those
-cells: names, registry policy, typed terminal requests/events, component Sema
-metadata, and viewer-adapter launch policy.
+active viewer attachment. In production, each cell exposes a `control.sock` for
+Signal control and a `data.sock` for raw attached-viewer bytes. This repo is
+the Persona-facing owner around those cells: names, registry policy, typed
+terminal requests/events, component Sema metadata, and viewer-adapter launch
+policy.
 
 Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
 behind this same `persona-terminal` owner and must not become a repository
@@ -29,10 +31,10 @@ authorization.
 ```mermaid
 flowchart LR
     "Codex or Claude harness" --- "terminal-cell daemon"
-    "terminal-cell daemon" -->|"sequenced transcript + live bytes"| "visible viewer"
-    "visible viewer" -->|"raw keyboard + resize frames"| "terminal-cell daemon"
+    "terminal-cell daemon" -->|"data.sock: live bytes"| "visible viewer"
+    "visible viewer" -->|"data.sock: raw keyboard + resize frames"| "terminal-cell daemon"
     "persona-harness" -->|"programmatic input bytes"| "persona-terminal"
-    "persona-terminal" -->|"raw terminal request"| "terminal-cell daemon"
+    "persona-terminal" -->|"control.sock: Signal control"| "terminal-cell daemon"
 ```
 
 ## 1 · Component Surface
@@ -45,7 +47,7 @@ flowchart LR
 - signal terminal request client;
 - output scrollback replay;
 - resize propagation;
-- terminal-cell socket adapter;
+- terminal-cell control/data socket adapter;
 - terminal Signal control actor for prompt patterns, input-gate leases,
   prompt-state checks, and injection decisions;
 - component Sema table for named terminal sessions;
@@ -65,14 +67,14 @@ envelope, and proceeds. Unbuilt domain operations reply
 **Prompt-pattern lifecycle**. `persona-harness` registers a per-adapter
 `PromptPattern` with the supervisor at session-create time via
 `signal-persona-terminal::RegisterPromptPattern`. The supervisor
-forwards the registration to the relevant terminal-cell; the cell
+forwards the registration to the relevant terminal-cell `control.sock`; the cell
 returns a typed `PromptPatternId` which the supervisor stores keyed by
 harness identity. Later `AcquireInputGate { pattern_id }` requests reference
 that id.
 
 **Gate-and-acquire forwarding**. When the supervisor receives
 `AcquireInputGate`, it does **not** answer locally —
-it forwards the request to the named terminal-cell, awaits the cell's
+it forwards the request to the named terminal-cell `control.sock`, awaits the cell's
 typed `GateAcquired { lease, prompt_state }` reply, and relays it. The
 `prompt_state` carries `Clean | Dirty | NotChecked` per
 `signal-persona-terminal::PromptState`. Prototype default: dirty state
@@ -82,9 +84,9 @@ DirtyPrompt }`); clean-then-inject machinery is deferred.
 **Message-landing endpoint**. The prototype's live
 message path terminates here. `persona-harness` calls
 `AcquireInputGate { pattern_id }` on the supervisor → forwarded to the
-terminal-cell → cell returns `GateAcquired { lease, prompt_state }` →
+terminal-cell control socket → cell returns `GateAcquired { lease, prompt_state }` →
 if `Clean`, harness calls `WriteInjection { lease, bytes,
-injection_sequence }` → supervisor forwards to cell → cell writes bytes
+injection_sequence }` → supervisor forwards to the cell control socket → cell writes bytes
 to child PTY → returns `InjectionAck { sequence }` → supervisor relays
 back through harness → router commits delivery. The bytes appear in the
 fixture cell's transcript; the prototype's witness reads the transcript
@@ -99,10 +101,11 @@ The production `persona-terminal` supervisor owns the registry around terminal
 cells: named sessions, session health, socket paths, viewer attachments, and
 Sema-backed durable terminal metadata. The low-level `terminal-cell` session
 owns one child process group and one PTY. The supervisor chooses and launches
-viewer adapters; the adapters draw windows and forward raw terminal bytes.
+viewer adapters; the adapters draw windows and forward raw terminal bytes over
+the cell's `data.sock`.
 
 The current daemon writes a named session record into the component Sema after
-the terminal-cell socket is bound. The `persona-terminal-sessions` and
+the terminal-cell sockets are bound. The `persona-terminal-sessions` and
 `persona-terminal-resolve` binaries are read-only inspection clients for that
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
@@ -116,6 +119,12 @@ the same `signal-persona-terminal` frames, resolves named terminal sessions from
 the component Sema registry, and forwards terminal work to the registered
 terminal-cell socket. This keeps callers on the Persona-facing component
 boundary instead of giving them terminal-cell socket paths.
+
+The Sema session record stores the terminal-cell control and data socket paths
+as separate fields. `persona-terminal` sends typed Signal control requests only
+to `control.sock`. Viewer adapters attach only to `data.sock`. A single
+terminal-cell socket that changes role by mode, message kind, or connection
+phase is not a production design.
 
 `TerminalSignalControl` is the first Kameo actor in this repo's supervisor
 direction. It owns prompt-pattern registry state, signal input-gate leases,
@@ -179,6 +188,13 @@ the redb file, table declarations, write sequencing, and read consistency.
 - The supervisor socket resolves terminal names through component Sema before
   terminal effects. Callers send `signal-persona-terminal` frames to
   `persona-terminal`, not directly to stored terminal-cell sockets.
+- The terminal registry records terminal-cell `control.sock` and `data.sock`
+  separately. Signal control requests use `control.sock`; attached viewer byte
+  transport uses `data.sock`.
+- Viewer adapters never connect to the Signal control socket. Signal clients
+  never carry live attached-viewer bytes.
+- There is no production single-socket mode-shift path between terminal-cell
+  control and data roles.
 - The supervisor binary accepts explicit `--socket` / `--store` overrides for
   tests, but the engine path is the Persona spawn envelope:
   `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.

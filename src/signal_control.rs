@@ -35,7 +35,7 @@ impl TerminalSignalControl {
     async fn event(
         &mut self,
         request: terminal_signal::TerminalRequest,
-    ) -> Result<terminal_signal::TerminalEvent, TerminalSignalControlFailure> {
+    ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
         match request {
             terminal_signal::TerminalRequest::TerminalConnection(connection) => {
                 Ok(terminal_signal::TerminalReady {
@@ -160,7 +160,7 @@ impl TerminalSignalControl {
     async fn acquire_input_gate(
         &mut self,
         acquire: terminal_signal::AcquireInputGate,
-    ) -> Result<terminal_signal::TerminalEvent, TerminalSignalControlFailure> {
+    ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
         let prompt_state = self
             .prompt_state(acquire.prompt_pattern_id.as_ref())
             .await?;
@@ -192,7 +192,7 @@ impl TerminalSignalControl {
     fn release_input_gate(
         &mut self,
         release: terminal_signal::ReleaseInputGate,
-    ) -> Result<terminal_signal::TerminalEvent, TerminalSignalControlFailure> {
+    ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
         if !self
             .signal_leases
             .contains_key(&release.lease.id.into_u64())
@@ -232,7 +232,7 @@ impl TerminalSignalControl {
     async fn write_injection(
         &mut self,
         injection: terminal_signal::WriteInjection,
-    ) -> Result<terminal_signal::TerminalEvent, TerminalSignalControlFailure> {
+    ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
         let Some(prompt_state) = self.signal_leases.get(&injection.lease.id.into_u64()) else {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: injection.terminal,
@@ -446,7 +446,7 @@ impl TerminalSignalControlRequest {
 }
 
 impl Message<TerminalSignalControlRequest> for TerminalSignalControl {
-    type Reply = Result<terminal_signal::TerminalEvent, TerminalSignalControlFailure>;
+    type Reply = Result<terminal_signal::TerminalReply, TerminalSignalControlFailure>;
 
     async fn handle(
         &mut self,

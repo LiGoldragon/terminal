@@ -7,13 +7,14 @@ use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use signal_core::{
-    ExchangeIdentifier, ExchangeLane, ExchangeSequence, FrameBody, NonEmpty, Reply, Request,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, RequestPayload,
     SessionEpoch, SignalVerb, SubReply,
 };
 use signal_persona_terminal::{
-    Frame as TerminalFrame, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation,
-    TerminalEvent, TerminalEventObservation, TerminalName, TerminalObservationSequence,
-    TerminalOperationKind, TerminalRejected, TerminalRejectionReason, TerminalRequest,
+    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation,
+    TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
+    TerminalObservationSequence, TerminalOperationKind, TerminalRejected, TerminalRejectionReason,
+    TerminalReply, TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
@@ -26,7 +27,7 @@ fn synthetic_exchange() -> ExchangeIdentifier {
     ExchangeIdentifier::new(
         SessionEpoch::new(0),
         ExchangeLane::Connector,
-        ExchangeSequence::first(),
+        LaneSequence::first(),
     )
 }
 
@@ -95,7 +96,7 @@ impl TerminalSupervisorDaemon {
         })
     }
 
-    pub fn serve_one(self) -> Result<TerminalEvent> {
+    pub fn serve_one(self) -> Result<TerminalReply> {
         self.bind()?.serve_one()
     }
 
@@ -103,7 +104,7 @@ impl TerminalSupervisorDaemon {
         runtime: &tokio::runtime::Runtime,
         supervisor: &ActorRef<TerminalSupervisor>,
         stream: UnixStream,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         let mut connection = TerminalSupervisorConnection::from_stream(stream);
         let request = connection.read_signal_request()?;
         if let TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) = request {
@@ -126,7 +127,7 @@ impl TerminalSupervisorDaemon {
         supervisor: &ActorRef<TerminalSupervisor>,
         mut client: TerminalSupervisorConnection,
         subscription: SubscribeTerminalWorkerLifecycle,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         let start = runtime.block_on(async {
             supervisor
                 .ask(TerminalSupervisorSubscriptionRequest::new(subscription))
@@ -151,7 +152,7 @@ impl TerminalSupervisorDaemon {
         supervisor: &ActorRef<TerminalSupervisor>,
         mut client: TerminalSupervisorConnection,
         plan: TerminalSupervisorSubscriptionPlan,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         let mut cell = BufReader::new(UnixStream::connect(plan.socket_path())?);
         let codec = TerminalSupervisorFrameCodec::default();
         codec.write_request(
@@ -199,7 +200,7 @@ impl BoundTerminalSupervisorDaemon {
         &self.socket
     }
 
-    pub fn serve_one(self) -> Result<TerminalEvent> {
+    pub fn serve_one(self) -> Result<TerminalReply> {
         let (stream, _address) = self.listener.accept()?;
         let event =
             TerminalSupervisorDaemon::handle_connection(&self.runtime, &self.supervisor, stream)?;
@@ -239,7 +240,7 @@ impl TerminalSupervisorConnection {
         self.signal.read_request(&mut self.stream)
     }
 
-    pub fn write_signal_event(&mut self, event: TerminalEvent) -> Result<()> {
+    pub fn write_signal_event(&mut self, event: TerminalReply) -> Result<()> {
         let stream = self.stream.get_mut();
         self.signal.write_event(stream, event)
     }
@@ -296,7 +297,7 @@ impl TerminalSupervisorFrameCodec {
         Ok(())
     }
 
-    pub fn write_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
+    pub fn write_event(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
         let frame = TerminalFrame::new(FrameBody::Reply {
             exchange: synthetic_exchange(),
             reply: Reply::completed(NonEmpty::single(SubReply::Ok {
@@ -310,7 +311,7 @@ impl TerminalSupervisorFrameCodec {
         Ok(())
     }
 
-    pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalEvent> {
+    pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalReply> {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
@@ -390,7 +391,7 @@ impl TerminalSupervisor {
         &mut self,
         sequence: u64,
         request: TerminalRequest,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
@@ -399,7 +400,7 @@ impl TerminalSupervisor {
             request.operation_kind(),
         ))?;
         let Some(session) = tables.session(&terminal)? else {
-            let event: TerminalEvent = TerminalRejected {
+            let event: TerminalReply = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
@@ -427,7 +428,7 @@ impl TerminalSupervisor {
             TerminalOperationKind::SubscribeTerminalWorkerLifecycle,
         ))?;
         let Some(session) = tables.session(&terminal)? else {
-            let event: TerminalEvent = TerminalRejected {
+            let event: TerminalReply = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
@@ -446,7 +447,7 @@ impl TerminalSupervisor {
     fn record_terminal_event(
         &mut self,
         tables: &TerminalTables,
-        event: TerminalEvent,
+        event: TerminalReply,
     ) -> Result<()> {
         self.recorded_event_count = self.recorded_event_count.saturating_add(1);
         tables.put_terminal_event(&TerminalEventObservation::new(
@@ -507,7 +508,7 @@ impl TerminalSupervisorRequest {
 }
 
 impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
-    type Reply = Result<TerminalEvent>;
+    type Reply = Result<TerminalReply>;
 
     async fn handle(
         &mut self,
@@ -549,11 +550,11 @@ impl Message<TerminalSupervisorSubscriptionRequest> for TerminalSupervisor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorObservedEvent {
-    event: TerminalEvent,
+    event: TerminalReply,
 }
 
 impl TerminalSupervisorObservedEvent {
-    pub fn new(event: TerminalEvent) -> Self {
+    pub fn new(event: TerminalReply) -> Self {
         Self { event }
     }
 }
@@ -573,7 +574,7 @@ impl Message<TerminalSupervisorObservedEvent> for TerminalSupervisor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalSupervisorSubscriptionStart {
-    Immediate(TerminalEvent),
+    Immediate(TerminalReply),
     Stream(TerminalSupervisorSubscriptionPlan),
 }
 
@@ -624,26 +625,28 @@ impl TerminalRequestTerminal {
         Self { terminal }
     }
 
-    fn from_event(event: &TerminalEvent) -> Self {
+    fn from_event(event: &TerminalReply) -> Self {
         let terminal = match event {
-            TerminalEvent::TerminalReady(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalInputAccepted(payload) => payload.terminal.clone(),
-            TerminalEvent::TranscriptDelta(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalResized(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalCaptured(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalDetached(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalExited(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalRejected(payload) => payload.terminal.clone(),
-            TerminalEvent::PromptPatternRegistered(payload) => payload.terminal.clone(),
-            TerminalEvent::PromptPatternUnregistered(payload) => payload.terminal.clone(),
-            TerminalEvent::PromptPatternList(payload) => payload.terminal.clone(),
-            TerminalEvent::GateAcquired(payload) => payload.terminal.clone(),
-            TerminalEvent::GateBusy(payload) => payload.terminal.clone(),
-            TerminalEvent::GateReleased(payload) => payload.terminal.clone(),
-            TerminalEvent::InjectionAck(payload) => payload.terminal.clone(),
-            TerminalEvent::InjectionRejected(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
-            TerminalEvent::TerminalWorkerLifecycleEvent(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalReady(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalInputAccepted(payload) => payload.terminal.clone(),
+            TerminalReply::TranscriptDelta(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalResized(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalCaptured(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalDetached(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalExited(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalRejected(payload) => payload.terminal.clone(),
+            TerminalReply::PromptPatternRegistered(payload) => payload.terminal.clone(),
+            TerminalReply::PromptPatternUnregistered(payload) => payload.terminal.clone(),
+            TerminalReply::PromptPatternList(payload) => payload.terminal.clone(),
+            TerminalReply::GateAcquired(payload) => payload.terminal.clone(),
+            TerminalReply::GateBusy(payload) => payload.terminal.clone(),
+            TerminalReply::GateReleased(payload) => payload.terminal.clone(),
+            TerminalReply::InjectionAck(payload) => payload.terminal.clone(),
+            TerminalReply::InjectionRejected(payload) => payload.terminal.clone(),
+            TerminalReply::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
+            // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
+            // (the streaming-event payload); routed via
+            // StreamingFrameBody::SubscriptionEvent, not Reply.
         };
         Self { terminal }
     }

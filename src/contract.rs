@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use signal_persona_terminal::{
     AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
-    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalEvent, TerminalGeneration,
+    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalReply, TerminalGeneration,
     TerminalInput, TerminalInputAccepted, TerminalName, TerminalReady, TerminalRejected,
     TerminalRejectionReason, TerminalRequest, TerminalResize, TerminalResized, TerminalSequence,
     TerminalTranscriptBytes, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
@@ -45,7 +45,7 @@ impl TerminalTransportBinding {
         self.transcript_sequence
     }
 
-    pub fn ready_event(&self) -> TerminalEvent {
+    pub fn ready_event(&self) -> TerminalReply {
         TerminalReady {
             terminal: self.terminal.clone(),
             generation: self.generation,
@@ -53,7 +53,7 @@ impl TerminalTransportBinding {
         .into()
     }
 
-    pub fn transcript_event(&mut self, bytes: impl Into<Vec<u8>>) -> TerminalEvent {
+    pub fn transcript_event(&mut self, bytes: impl Into<Vec<u8>>) -> TerminalReply {
         self.transcript_sequence =
             TerminalSequence::new(self.transcript_sequence.into_u64().saturating_add(1));
         TranscriptDelta {
@@ -64,7 +64,7 @@ impl TerminalTransportBinding {
         .into()
     }
 
-    pub fn handle_request(&mut self, request: TerminalRequest) -> Result<TerminalEvent> {
+    pub fn handle_request(&mut self, request: TerminalRequest) -> Result<TerminalReply> {
         match request {
             TerminalRequest::TerminalConnection(connection) => {
                 Ok(self.handle_connection(connection))
@@ -104,14 +104,14 @@ impl TerminalTransportBinding {
         }
     }
 
-    fn handle_connection(&self, connection: TerminalConnection) -> TerminalEvent {
+    fn handle_connection(&self, connection: TerminalConnection) -> TerminalReply {
         if !self.contains_terminal(&connection.terminal) {
             return Self::rejected(connection.terminal, TerminalRejectionReason::NotConnected);
         }
         self.ready_event()
     }
 
-    fn handle_input(&self, input: TerminalInput) -> Result<TerminalEvent> {
+    fn handle_input(&self, input: TerminalInput) -> Result<TerminalReply> {
         if !self.contains_terminal(&input.terminal) {
             return Ok(Self::rejected(
                 input.terminal,
@@ -126,7 +126,7 @@ impl TerminalTransportBinding {
         .into())
     }
 
-    fn handle_resize(&self, resize: TerminalResize) -> Result<TerminalEvent> {
+    fn handle_resize(&self, resize: TerminalResize) -> Result<TerminalReply> {
         if !self.contains_terminal(&resize.terminal) {
             return Ok(Self::rejected(
                 resize.terminal,
@@ -144,7 +144,7 @@ impl TerminalTransportBinding {
         .into())
     }
 
-    fn handle_capture(&self, capture: TerminalCapture) -> Result<TerminalEvent> {
+    fn handle_capture(&self, capture: TerminalCapture) -> Result<TerminalReply> {
         if !self.contains_terminal(&capture.terminal) {
             return Ok(Self::rejected(
                 capture.terminal,
@@ -163,7 +163,7 @@ impl TerminalTransportBinding {
     fn handle_register_prompt_pattern(
         &self,
         registration: RegisterPromptPattern,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         self.handle_signal_control(
             registration.terminal.clone(),
             TerminalRequest::RegisterPromptPattern(registration),
@@ -173,35 +173,35 @@ impl TerminalTransportBinding {
     fn handle_unregister_prompt_pattern(
         &self,
         unregistration: UnregisterPromptPattern,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         self.handle_signal_control(
             unregistration.terminal.clone(),
             TerminalRequest::UnregisterPromptPattern(unregistration),
         )
     }
 
-    fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<TerminalEvent> {
+    fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<TerminalReply> {
         self.handle_signal_control(
             list.terminal.clone(),
             TerminalRequest::ListPromptPatterns(list),
         )
     }
 
-    fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<TerminalEvent> {
+    fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<TerminalReply> {
         self.handle_signal_control(
             acquire.terminal.clone(),
             TerminalRequest::AcquireInputGate(acquire),
         )
     }
 
-    fn handle_release_input_gate(&self, release: ReleaseInputGate) -> Result<TerminalEvent> {
+    fn handle_release_input_gate(&self, release: ReleaseInputGate) -> Result<TerminalReply> {
         self.handle_signal_control(
             release.terminal.clone(),
             TerminalRequest::ReleaseInputGate(release),
         )
     }
 
-    fn handle_write_injection(&self, injection: WriteInjection) -> Result<TerminalEvent> {
+    fn handle_write_injection(&self, injection: WriteInjection) -> Result<TerminalReply> {
         self.handle_signal_control(
             injection.terminal.clone(),
             TerminalRequest::WriteInjection(injection),
@@ -212,7 +212,7 @@ impl TerminalTransportBinding {
         &self,
         terminal: TerminalName,
         request: TerminalRequest,
-    ) -> Result<TerminalEvent> {
+    ) -> Result<TerminalReply> {
         if !self.contains_terminal(&terminal) {
             return Ok(Self::rejected(
                 terminal,
@@ -230,7 +230,7 @@ impl TerminalTransportBinding {
         TerminalSocket::from_path(self.socket_path.clone())
     }
 
-    fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> TerminalEvent {
+    fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> TerminalReply {
         TerminalRejected { terminal, reason }.into()
     }
 }
