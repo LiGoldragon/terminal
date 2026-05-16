@@ -8,7 +8,8 @@ root="${PERSONA_TERMINAL_TEST_ROOT:-$(mktemp -d -t persona-terminal-signal.XXXXX
 mkdir -p "$root"
 
 store="$root/terminal.redb"
-socket="$root/operator.sock"
+control_socket="$root/operator.control.sock"
+data_socket="$root/operator.data.sock"
 stdout="$root/daemon.stdout"
 stderr="$root/daemon.stderr"
 connect_event="$root/connect.event"
@@ -32,34 +33,39 @@ trap cleanup EXIT
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-daemon" \
   --store "$store" \
   --name operator \
-  --socket "$socket" \
+  --control-socket "$control_socket" \
+  --data-socket "$data_socket" \
   -- "$PERSONA_TERMINAL_BASH" -lc 'printf "terminal-ready\n"; while IFS= read -r line; do printf "signal-echo:%s\n" "$line"; done' \
   >"$stdout" \
   2>"$stderr" &
 daemon_pid="$!"
 
 for _ in $(seq 1 100); do
-  if [ -S "$socket" ] && grep -Fq "persona-terminal-daemon socket=$socket" "$stdout"; then
+  if [ -S "$control_socket" ] \
+    && [ -S "$data_socket" ] \
+    && grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"; then
     break
   fi
   sleep 0.05
 done
 
-test -S "$socket"
-grep -Fq "persona-terminal-daemon socket=$socket" "$stdout"
+test -S "$control_socket"
+test -S "$data_socket"
+grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"
+grep -Fq "data-socket=$data_socket" "$stdout"
 
 resolved="$("$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-resolve" --store "$store" operator)"
-test "$resolved" = "$socket"
+test "$resolved" = "$control_socket"
 
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
-  --socket "$resolved" \
+  --control-socket "$resolved" \
   --terminal operator \
   connect \
   >"$connect_event"
 grep -Fq $'TerminalReady\toperator\t1' "$connect_event"
 
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
-  --socket "$resolved" \
+  --control-socket "$resolved" \
   --terminal operator \
   prompt signal-input-from-signal \
   >"$input_event"
@@ -68,7 +74,7 @@ grep -Fq $'TerminalInputAccepted\toperator\t1' "$input_event"
 needle="$(printf 'signal-echo:signal-input-from-signal' | od -An -tx1 | tr -d ' \n')"
 for _ in $(seq 1 100); do
   "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
-    --socket "$resolved" \
+    --control-socket "$resolved" \
     --terminal operator \
     capture \
     >"$capture_event" || true

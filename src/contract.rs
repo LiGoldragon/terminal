@@ -232,7 +232,7 @@ impl TerminalTransportBinding {
     }
 
     fn socket(&self) -> TerminalSocket {
-        TerminalSocket::from_path(self.socket_path.clone())
+        TerminalSocket::from_control_socket(self.socket_path.clone())
     }
 
     fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> TerminalReply {

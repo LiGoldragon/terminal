@@ -22,9 +22,12 @@ messages.
 
 ## Named sessions
 
-`persona-terminal-daemon --store <terminal.redb> --name <terminal> --socket
-<socket> -- <command> [args...]` starts a terminal cell and records the named
-session in the component Sema database after the socket is bound.
+`persona-terminal-daemon --store <terminal.redb> --name <terminal>
+--control-socket <control.sock> --data-socket <data.sock> -- <command>
+[args...]` starts a terminal cell and records the named session (pointing at
+the control socket) in the component Sema database after both sockets are
+bound. The control socket carries Signal frames and the byte-tag CLI
+protocol; the data socket carries the attached-viewer raw byte stream.
 
 `persona-terminal-sessions --store <terminal.redb>` prints the registered
 sessions. `persona-terminal-resolve --store <terminal.redb> <terminal>` prints
@@ -39,7 +42,7 @@ so it is exposed as a flake app rather than a pure builder check.
 
 ## Signal contract witness
 
-`persona-terminal-signal --socket <socket> --terminal <terminal> connect`
+`persona-terminal-signal --control-socket <control.sock> --terminal <terminal> connect`
 builds a `signal-persona-terminal` request, round-trips it through a
 `signal-core` frame, sends it through the Persona terminal transport binding,
 round-trips the returned event through a `signal-core` reply frame, and prints

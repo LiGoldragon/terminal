@@ -29,11 +29,13 @@ use crate::signal_control::{TerminalSignalControl, TerminalSignalControlRequest}
 use crate::socket::SocketMode;
 use crate::tables::StoreLocation;
 
-const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
+const DEFAULT_CONTROL_SOCKET: &str = "/tmp/persona-terminal.control.sock";
+const DEFAULT_DATA_SOCKET: &str = "/tmp/persona-terminal.data.sock";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
+    data_socket: PathBuf,
     command: TerminalCommand,
     registration: Option<SessionRegistration>,
     socket_mode: Option<SocketMode>,
@@ -49,7 +51,8 @@ impl DaemonRequest {
         let runtime = Builder::new_multi_thread().enable_all().build()?;
         runtime.block_on(
             TerminalCellDaemon::new(
-                self.socket,
+                self.control_socket,
+                self.data_socket,
                 TerminalLaunch::new(self.command, TerminalSize::new(24, 80)),
                 self.registration,
                 self.socket_mode,
@@ -60,7 +63,8 @@ impl DaemonRequest {
 }
 
 struct TerminalCellDaemon {
-    socket: PathBuf,
+    control_socket: PathBuf,
+    data_socket: PathBuf,
     launch: TerminalLaunch,
     registration: Option<SessionRegistration>,
     socket_mode: Option<SocketMode>,
@@ -68,13 +72,15 @@ struct TerminalCellDaemon {
 
 impl TerminalCellDaemon {
     fn new(
-        socket: PathBuf,
+        control_socket: PathBuf,
+        data_socket: PathBuf,
         launch: TerminalLaunch,
         registration: Option<SessionRegistration>,
         socket_mode: Option<SocketMode>,
     ) -> Self {
         Self {
-            socket,
+            control_socket,
+            data_socket,
             launch,
             registration,
             socket_mode,
@@ -97,40 +103,58 @@ impl TerminalCellDaemon {
                 detail: format!("terminal cell startup failed: {error}"),
             })?;
 
-        TerminalSocketFile::new(self.socket.as_path()).prepare()?;
-        let listener = UnixListener::bind(&self.socket)?;
+        TerminalSocketFile::new(self.control_socket.as_path()).prepare()?;
+        let control_listener = UnixListener::bind(&self.control_socket)?;
+        TerminalSocketFile::new(self.data_socket.as_path()).prepare()?;
+        let data_listener = UnixListener::bind(&self.data_socket)?;
         if let Some(socket_mode) = self.socket_mode {
-            socket_mode.apply_to(&self.socket)?;
+            socket_mode.apply_to(&self.control_socket)?;
+            socket_mode.apply_to(&self.data_socket)?;
         }
         if let Some(registration) = &self.registration {
             registration.record()?;
         }
         let runtime = Handle::current();
 
-        println!("persona-terminal-daemon socket={}", self.socket.display());
+        println!(
+            "persona-terminal-daemon control-socket={} data-socket={}",
+            self.control_socket.display(),
+            self.data_socket.display()
+        );
         io::stdout().flush()?;
 
-        tokio::task::spawn_blocking(move || {
-            TerminalCellDaemonLoop::new(
-                listener,
-                terminal,
-                input_port,
-                output_port,
-                signal_control,
-                runtime,
-            )
-            .run()
-        })
-        .await
-        .map_err(|error| Error::TerminalCell {
-            detail: format!("terminal daemon task failed: {error}"),
+        let control_loop = TerminalControlPlaneLoop::new(
+            control_listener,
+            terminal.clone(),
+            input_port.clone(),
+            signal_control,
+            runtime.clone(),
+        );
+        let data_loop = TerminalDataPlaneLoop::new(
+            data_listener,
+            terminal,
+            input_port,
+            output_port,
+            runtime,
+        );
+
+        let control_task = tokio::task::spawn_blocking(move || control_loop.run());
+        let data_task = tokio::task::spawn_blocking(move || data_loop.run());
+
+        let (control_result, data_result) = tokio::join!(control_task, data_task);
+        control_result.map_err(|error| Error::TerminalCell {
+            detail: format!("terminal control loop task failed: {error}"),
+        })??;
+        data_result.map_err(|error| Error::TerminalCell {
+            detail: format!("terminal data loop task failed: {error}"),
         })??;
         Ok(())
     }
 }
 
 struct DaemonArguments {
-    socket: PathBuf,
+    control_socket: PathBuf,
+    data_socket: PathBuf,
     command: TerminalCommand,
     store: Option<StoreLocation>,
     terminal: Option<signal_persona_terminal::TerminalName>,
@@ -139,7 +163,8 @@ struct DaemonArguments {
 impl DaemonArguments {
     fn from_environment() -> Self {
         let mut arguments = env::args_os().skip(1);
-        let mut socket = None;
+        let mut control_socket = None;
+        let mut data_socket = None;
         let mut store = None;
         let mut terminal = None;
         let mut command = Vec::new();
@@ -150,14 +175,14 @@ impl DaemonArguments {
                     command.extend(arguments.map(|value| value.to_string_lossy().into_owned()));
                     break;
                 }
-                "--socket" => socket = arguments.next().map(PathBuf::from),
+                "--control-socket" => control_socket = arguments.next().map(PathBuf::from),
+                "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--store" => store = arguments.next().map(StoreLocation::new),
                 "--name" | "--terminal" => {
                     terminal = arguments.next().map(|value| {
                         signal_persona_terminal::TerminalName::new(value.to_string_lossy())
                     })
                 }
-                value if socket.is_none() => socket = Some(PathBuf::from(value)),
                 value => {
                     command.push(value.to_string());
                     command.extend(arguments.map(|value| value.to_string_lossy().into_owned()));
@@ -167,7 +192,8 @@ impl DaemonArguments {
         }
 
         Self {
-            socket: socket.unwrap_or_else(default_socket),
+            control_socket: control_socket.unwrap_or_else(default_control_socket),
+            data_socket: data_socket.unwrap_or_else(default_data_socket),
             command: Self::command_from(command),
             store,
             terminal,
@@ -179,11 +205,12 @@ impl DaemonArguments {
             SessionRegistration::ready(
                 self.store.unwrap_or_else(StoreLocation::from_environment),
                 terminal,
-                self.socket.clone(),
+                self.control_socket.clone(),
             )
         });
         DaemonRequest {
-            socket: self.socket,
+            control_socket: self.control_socket,
+            data_socket: self.data_socket,
             command: self.command,
             registration,
             socket_mode: SocketMode::from_environment(),
@@ -230,21 +257,19 @@ impl<'path> TerminalSocketFile<'path> {
     }
 }
 
-struct TerminalCellDaemonLoop {
+struct TerminalControlPlaneLoop {
     listener: UnixListener,
     terminal: ActorRef<TerminalCell>,
     input_port: TerminalInputPort,
-    output_port: TerminalOutputPort,
     signal_control: ActorRef<TerminalSignalControl>,
     runtime: Handle,
 }
 
-impl TerminalCellDaemonLoop {
+impl TerminalControlPlaneLoop {
     fn new(
         listener: UnixListener,
         terminal: ActorRef<TerminalCell>,
         input_port: TerminalInputPort,
-        output_port: TerminalOutputPort,
         signal_control: ActorRef<TerminalSignalControl>,
         runtime: Handle,
     ) -> Self {
@@ -252,7 +277,6 @@ impl TerminalCellDaemonLoop {
             listener,
             terminal,
             input_port,
-            output_port,
             signal_control,
             runtime,
         }
@@ -282,23 +306,21 @@ impl TerminalCellDaemonLoop {
             };
             let terminal = self.terminal.clone();
             let input_port = self.input_port.clone();
-            let output_port = self.output_port.clone();
             let signal_control = self.signal_control.clone();
             let runtime = self.runtime.clone();
             thread::Builder::new()
-                .name("persona-terminal-connection".to_string())
+                .name("persona-terminal-control-connection".to_string())
                 .spawn(move || {
-                    if let Err(error) = TerminalCellConnection::new(
+                    if let Err(error) = TerminalControlConnection::new(
                         stream,
                         terminal,
                         input_port,
-                        output_port,
                         signal_control,
                         runtime,
                     )
                     .run()
                     {
-                        eprintln!("persona terminal connection failed: {error}");
+                        eprintln!("persona terminal control connection failed: {error}");
                     }
                 })?;
         }
@@ -306,21 +328,75 @@ impl TerminalCellDaemonLoop {
     }
 }
 
-struct TerminalCellConnection {
-    stream: UnixStream,
+struct TerminalDataPlaneLoop {
+    listener: UnixListener,
     terminal: ActorRef<TerminalCell>,
     input_port: TerminalInputPort,
     output_port: TerminalOutputPort,
+    runtime: Handle,
+}
+
+impl TerminalDataPlaneLoop {
+    fn new(
+        listener: UnixListener,
+        terminal: ActorRef<TerminalCell>,
+        input_port: TerminalInputPort,
+        output_port: TerminalOutputPort,
+        runtime: Handle,
+    ) -> Self {
+        Self {
+            listener,
+            terminal,
+            input_port,
+            output_port,
+            runtime,
+        }
+    }
+
+    fn run(self) -> io::Result<()> {
+        for incoming in self.listener.incoming() {
+            let stream = incoming?;
+            let terminal = self.terminal.clone();
+            let input_port = self.input_port.clone();
+            let output_port = self.output_port.clone();
+            let runtime = self.runtime.clone();
+            thread::Builder::new()
+                .name("persona-terminal-data-connection".to_string())
+                .spawn(move || {
+                    if let Err(error) = TerminalDataConnection::new(
+                        stream,
+                        terminal,
+                        input_port,
+                        output_port,
+                        runtime,
+                    )
+                    .run()
+                    {
+                        eprintln!("persona terminal data connection failed: {error}");
+                    }
+                })?;
+        }
+        Ok(())
+    }
+}
+
+/// A control-plane connection. Carries every kind of request *except*
+/// `Attach`: an attach request on the control plane is an
+/// architectural-truth violation and is explicitly rejected so the wire
+/// boundary stays clean.
+struct TerminalControlConnection {
+    stream: UnixStream,
+    terminal: ActorRef<TerminalCell>,
+    input_port: TerminalInputPort,
     signal_control: ActorRef<TerminalSignalControl>,
     runtime: Handle,
 }
 
-impl TerminalCellConnection {
+impl TerminalControlConnection {
     fn new(
         stream: UnixStream,
         terminal: ActorRef<TerminalCell>,
         input_port: TerminalInputPort,
-        output_port: TerminalOutputPort,
         signal_control: ActorRef<TerminalSignalControl>,
         runtime: Handle,
     ) -> Self {
@@ -328,7 +404,6 @@ impl TerminalCellConnection {
             stream,
             terminal,
             input_port,
-            output_port,
             signal_control,
             runtime,
         }
@@ -339,7 +414,7 @@ impl TerminalCellConnection {
         match request {
             SocketRequest::Capture => self.write_snapshot(),
             SocketRequest::SubscribeFromBeginning => self.stream_subscription(),
-            SocketRequest::Attach => self.attach_viewer(),
+            SocketRequest::Attach => self.reject_attach_on_control_plane(),
             SocketRequest::Input(input) => self.write_input(input),
             SocketRequest::CloseHumanInput => self.close_human_input(),
             SocketRequest::OpenHumanInput(lease) => self.open_human_input(lease),
@@ -349,6 +424,16 @@ impl TerminalCellConnection {
             SocketRequest::WorkerObservation => self.write_worker_observation(),
             SocketRequest::Signal(request) => self.handle_signal_request(request),
         }
+    }
+
+    fn reject_attach_on_control_plane(&mut self) -> io::Result<()> {
+        SocketReplyWriter::new(&mut self.stream).write_attach_rejected(
+            "control socket does not accept viewer attach; use the data socket",
+        )?;
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "attach request arrived on persona-terminal control socket",
+        ))
     }
 
     fn write_snapshot(&mut self) -> io::Result<()> {
@@ -367,65 +452,6 @@ impl TerminalCellConnection {
             if self.stream.flush().is_err() {
                 break;
             }
-        }
-        Ok(())
-    }
-
-    fn attach_viewer(&mut self) -> io::Result<()> {
-        let lease = match self.output_port.reserve_viewer() {
-            Ok(lease) => lease,
-            Err(TerminalCellError::ViewerAlreadyAttached) => {
-                SocketReplyWriter::new(&mut self.stream)
-                    .write_attach_rejected("terminal cell already has an attached viewer")?;
-                return Ok(());
-            }
-            Err(error) => return Err(Self::terminal_error(error)),
-        };
-
-        let result = self.complete_viewer_attach(lease);
-        if result.is_err() {
-            let _ = self.output_port.detach(lease);
-        }
-        result
-    }
-
-    fn complete_viewer_attach(&mut self, lease: TerminalViewerLease) -> io::Result<()> {
-        SocketReplyWriter::new(&mut self.stream).write_attach_accepted()?;
-
-        let snapshot = self.snapshot()?;
-        if !snapshot.bytes().is_empty() {
-            self.stream.write_all(snapshot.bytes())?;
-            self.stream.flush()?;
-        }
-
-        self.output_port
-            .activate_viewer(lease, self.stream.try_clone()?)
-            .map_err(Self::terminal_error)?;
-
-        self.record_worker_started(TerminalWorkerKind::AttachConnectionPump);
-        let result = self.pump_viewer_input();
-        let reason = match &result {
-            Ok(()) => TerminalWorkerStop::AttachConnectionClosed,
-            Err(error) => TerminalWorkerStop::AttachConnectionFailed(error.to_string()),
-        };
-        self.record_worker_stopped(TerminalWorkerKind::AttachConnectionPump, reason);
-        let _ = self.output_port.detach(lease);
-        result
-    }
-
-    fn pump_viewer_input(&mut self) -> io::Result<()> {
-        let mut buffer = [0_u8; 8192];
-        loop {
-            let count = self.stream.read(&mut buffer)?;
-            if count == 0 {
-                break;
-            }
-            self.input_port
-                .accept(TerminalInput::new(
-                    buffer[..count].to_vec(),
-                    InputSource::Viewer,
-                ))
-                .map_err(Self::terminal_error)?;
         }
         Ok(())
     }
@@ -569,6 +595,127 @@ impl TerminalCellConnection {
             .map_err(Self::actor_error)
     }
 
+    fn actor_error(error: impl std::fmt::Display) -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())
+    }
+
+    fn terminal_error(error: TerminalCellError) -> io::Error {
+        io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())
+    }
+}
+
+/// A data-plane connection. Carries only an attach handshake followed
+/// by raw bidirectional bytes between the viewer and the child PTY. The
+/// connection rejects every kind of request other than `Attach` so the
+/// wire boundary stays clean.
+struct TerminalDataConnection {
+    stream: UnixStream,
+    terminal: ActorRef<TerminalCell>,
+    input_port: TerminalInputPort,
+    output_port: TerminalOutputPort,
+    runtime: Handle,
+}
+
+impl TerminalDataConnection {
+    fn new(
+        stream: UnixStream,
+        terminal: ActorRef<TerminalCell>,
+        input_port: TerminalInputPort,
+        output_port: TerminalOutputPort,
+        runtime: Handle,
+    ) -> Self {
+        Self {
+            stream,
+            terminal,
+            input_port,
+            output_port,
+            runtime,
+        }
+    }
+
+    fn run(&mut self) -> io::Result<()> {
+        let request = SocketRequestReader::new(&mut self.stream).read_request()?;
+        match request {
+            SocketRequest::Attach => self.attach_viewer(),
+            _ => self.reject_non_attach_on_data_plane(),
+        }
+    }
+
+    fn reject_non_attach_on_data_plane(&mut self) -> io::Result<()> {
+        SocketReplyWriter::new(&mut self.stream).write_attach_rejected(
+            "data socket only accepts viewer attach; use the control socket",
+        )?;
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "non-attach request arrived on persona-terminal data socket",
+        ))
+    }
+
+    fn attach_viewer(&mut self) -> io::Result<()> {
+        let lease = match self.output_port.reserve_viewer() {
+            Ok(lease) => lease,
+            Err(TerminalCellError::ViewerAlreadyAttached) => {
+                SocketReplyWriter::new(&mut self.stream)
+                    .write_attach_rejected("terminal cell already has an attached viewer")?;
+                return Ok(());
+            }
+            Err(error) => return Err(Self::terminal_error(error)),
+        };
+
+        let result = self.complete_viewer_attach(lease);
+        if result.is_err() {
+            let _ = self.output_port.detach(lease);
+        }
+        result
+    }
+
+    fn complete_viewer_attach(&mut self, lease: TerminalViewerLease) -> io::Result<()> {
+        SocketReplyWriter::new(&mut self.stream).write_attach_accepted()?;
+
+        let snapshot = self.snapshot()?;
+        if !snapshot.bytes().is_empty() {
+            self.stream.write_all(snapshot.bytes())?;
+            self.stream.flush()?;
+        }
+
+        self.output_port
+            .activate_viewer(lease, self.stream.try_clone()?)
+            .map_err(Self::terminal_error)?;
+
+        self.record_worker_started(TerminalWorkerKind::AttachConnectionPump);
+        let result = self.pump_viewer_input();
+        let reason = match &result {
+            Ok(()) => TerminalWorkerStop::AttachConnectionClosed,
+            Err(error) => TerminalWorkerStop::AttachConnectionFailed(error.to_string()),
+        };
+        self.record_worker_stopped(TerminalWorkerKind::AttachConnectionPump, reason);
+        let _ = self.output_port.detach(lease);
+        result
+    }
+
+    fn pump_viewer_input(&mut self) -> io::Result<()> {
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let count = self.stream.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            self.input_port
+                .accept(TerminalInput::new(
+                    buffer[..count].to_vec(),
+                    InputSource::Viewer,
+                ))
+                .map_err(Self::terminal_error)?;
+        }
+        Ok(())
+    }
+
+    fn snapshot(&self) -> io::Result<terminal_cell::TranscriptSnapshot> {
+        self.runtime
+            .block_on(async { self.terminal.ask(TranscriptSnapshotRequest).await })
+            .map_err(Self::actor_error)
+    }
+
     fn record_worker_started(&self, worker: TerminalWorkerKind) {
         let _ = self
             .terminal
@@ -594,7 +741,8 @@ impl TerminalCellConnection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewerRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
+    data_socket: PathBuf,
     mode: ViewMode,
     ready_file: Option<PathBuf>,
 }
@@ -602,29 +750,32 @@ pub struct ViewerRequest {
 impl ViewerRequest {
     pub fn from_environment() -> Self {
         let mut arguments = env::args().skip(1);
-        let mut socket = None;
+        let mut control_socket = None;
+        let mut data_socket = None;
         let mut mode = ViewMode::Interactive;
         let mut ready_file = None;
 
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
-                "--socket" => socket = arguments.next().map(PathBuf::from),
+                "--control-socket" => control_socket = arguments.next().map(PathBuf::from),
+                "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--once" => mode = ViewMode::Snapshot,
                 "--ready-file" => ready_file = arguments.next().map(PathBuf::from),
-                path if socket.is_none() => socket = Some(PathBuf::from(path)),
                 _ => {}
             }
         }
 
         Self {
-            socket: socket.unwrap_or_else(default_socket),
+            control_socket: control_socket.unwrap_or_else(default_control_socket),
+            data_socket: data_socket.unwrap_or_else(default_data_socket),
             mode,
             ready_file,
         }
     }
 
     pub fn run(self) -> Result<()> {
-        TerminalViewer::new(self.socket, self.mode, self.ready_file).run()
+        TerminalViewer::new(self.control_socket, self.data_socket, self.mode, self.ready_file)
+            .run()
     }
 }
 
@@ -641,9 +792,14 @@ struct TerminalViewer {
 }
 
 impl TerminalViewer {
-    fn new(socket: PathBuf, mode: ViewMode, ready_file: Option<PathBuf>) -> Self {
+    fn new(
+        control_socket: PathBuf,
+        data_socket: PathBuf,
+        mode: ViewMode,
+        ready_file: Option<PathBuf>,
+    ) -> Self {
         Self {
-            client: TerminalCellSocketClient::new(socket),
+            client: TerminalCellSocketClient::new(control_socket, data_socket),
             mode,
             readiness: TerminalViewerReadiness::new(ready_file),
         }
@@ -789,30 +945,33 @@ impl Drop for TerminalRawMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
     text: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
     text: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
 }
 
+/// Control-plane client around a single terminal cell. Every verb this
+/// type exposes is a control verb. Attach lives in `TerminalCellSocketClient`
+/// and the `terminal-cell-view` / `persona-terminal-view` binaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSocket {
     client: TerminalCellSocketClient,
 }
 
 impl TerminalSocket {
-    pub fn from_path(path: impl Into<PathBuf>) -> Self {
+    pub fn from_control_socket(path: impl Into<PathBuf>) -> Self {
         Self {
-            client: TerminalCellSocketClient::new(path),
+            client: TerminalCellSocketClient::for_control_only(path),
         }
     }
 
@@ -857,37 +1016,44 @@ impl TerminalSocket {
 
 impl SendRequest {
     pub fn from_environment() -> Self {
-        let (socket, text) = socket_and_text_from_environment();
-        Self { socket, text }
+        let (control_socket, text) = control_socket_and_text_from_environment();
+        Self {
+            control_socket,
+            text,
+        }
     }
 
     pub fn run(self) -> Result<()> {
-        TerminalSocket::from_path(self.socket).send_prompt(&String::from_utf8_lossy(&self.text))
+        TerminalSocket::from_control_socket(self.control_socket)
+            .send_prompt(&String::from_utf8_lossy(&self.text))
     }
 }
 
 impl TypeRequest {
     pub fn from_environment() -> Self {
-        let (socket, text) = socket_and_text_from_environment();
-        Self { socket, text }
+        let (control_socket, text) = control_socket_and_text_from_environment();
+        Self {
+            control_socket,
+            text,
+        }
     }
 
     pub fn run(self) -> Result<()> {
-        TerminalSocket::from_path(self.socket).send_viewer_bytes(&self.text)
+        TerminalSocket::from_control_socket(self.control_socket).send_viewer_bytes(&self.text)
     }
 }
 
 impl CaptureRequest {
     pub fn from_environment() -> Self {
-        let socket = env::args_os()
+        let control_socket = env::args_os()
             .nth(1)
             .map(PathBuf::from)
-            .unwrap_or_else(default_socket);
-        Self { socket }
+            .unwrap_or_else(default_control_socket);
+        Self { control_socket }
     }
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
-        let snapshot = TerminalSocket::from_path(self.socket).capture()?;
+        let snapshot = TerminalSocket::from_control_socket(self.control_socket).capture()?;
         match CapturePresentation::from_environment() {
             CapturePresentation::Raw => output.write_all(snapshot.as_bytes())?,
             CapturePresentation::Screen { rows, columns } => {
@@ -989,23 +1155,27 @@ impl TerminalScreenSnapshot {
     }
 }
 
-fn default_socket() -> PathBuf {
-    PathBuf::from(DEFAULT_SOCKET)
+fn default_control_socket() -> PathBuf {
+    PathBuf::from(DEFAULT_CONTROL_SOCKET)
+}
+
+fn default_data_socket() -> PathBuf {
+    PathBuf::from(DEFAULT_DATA_SOCKET)
 }
 
 fn default_command() -> TerminalCommand {
     TerminalCommand::new(env::var("SHELL").unwrap_or_else(|_| "bash".to_string()), [])
 }
 
-fn socket_and_text_from_environment() -> (PathBuf, Vec<u8>) {
+fn control_socket_and_text_from_environment() -> (PathBuf, Vec<u8>) {
     let mut arguments = env::args_os().skip(1);
-    let socket = arguments
+    let control_socket = arguments
         .next()
         .map(PathBuf::from)
-        .unwrap_or_else(default_socket);
+        .unwrap_or_else(default_control_socket);
     let text = arguments
         .next()
         .map(|value| value.to_string_lossy().into_owned().into_bytes())
         .unwrap_or_default();
-    (socket, text)
+    (control_socket, text)
 }

@@ -21,7 +21,7 @@ use signal_persona_terminal::{
 use crate::pty::TerminalSocket;
 use crate::{Error, Result};
 
-const DEFAULT_SOCKET: &str = "/tmp/persona-terminal.sock";
+const DEFAULT_CONTROL_SOCKET: &str = "/tmp/persona-terminal.control.sock";
 const DEFAULT_TERMINAL: &str = "operator";
 
 fn synthetic_exchange() -> ExchangeIdentifier {
@@ -34,7 +34,7 @@ fn synthetic_exchange() -> ExchangeIdentifier {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSignalRequest {
-    socket: PathBuf,
+    control_socket: PathBuf,
     terminal: TerminalName,
     operation: TerminalSignalOperation,
 }
@@ -45,12 +45,12 @@ impl TerminalSignalRequest {
     }
 
     pub fn new(
-        socket: impl Into<PathBuf>,
+        control_socket: impl Into<PathBuf>,
         terminal: TerminalName,
         operation: TerminalSignalOperation,
     ) -> Self {
         Self {
-            socket: socket.into(),
+            control_socket: control_socket.into(),
             terminal,
             operation,
         }
@@ -59,7 +59,8 @@ impl TerminalSignalRequest {
     pub fn run(self, mut output: impl Write) -> Result<()> {
         let request = self.operation.into_request(self.terminal);
         let framed_request = TerminalSignalRequestFrame::new(request).into_request()?;
-        let event = TerminalSocket::from_path(self.socket).signal(framed_request)?;
+        let event =
+            TerminalSocket::from_control_socket(self.control_socket).signal(framed_request)?;
         let framed_event = TerminalSignalEventFrame::new(event).into_event()?;
         TerminalEventLine::new(framed_event).write_to(&mut output)?;
         output.flush()?;
@@ -167,7 +168,7 @@ impl TerminalSignalOperation {
 }
 
 struct TerminalSignalArguments {
-    socket: PathBuf,
+    control_socket: PathBuf,
     terminal: TerminalName,
     operation: TerminalSignalOperation,
 }
@@ -175,13 +176,13 @@ struct TerminalSignalArguments {
 impl TerminalSignalArguments {
     fn from_environment() -> Result<Self> {
         let mut arguments = std::env::args_os().skip(1);
-        let mut socket = None;
+        let mut control_socket = None;
         let mut terminal = None;
         let mut operation = None;
 
         while let Some(argument) = arguments.next() {
             match argument.to_string_lossy().as_ref() {
-                "--socket" => socket = arguments.next().map(PathBuf::from),
+                "--control-socket" => control_socket = arguments.next().map(PathBuf::from),
                 "--terminal" | "--name" => {
                     terminal = arguments
                         .next()
@@ -259,14 +260,17 @@ impl TerminalSignalArguments {
                     operation = Some(TerminalSignalOperation::WorkerLifecycleSnapshot);
                     break;
                 }
-                value if socket.is_none() => socket = Some(PathBuf::from(value)),
+                value if control_socket.is_none() => {
+                    control_socket = Some(PathBuf::from(value))
+                }
                 value if terminal.is_none() => terminal = Some(TerminalName::new(value)),
                 _ => {}
             }
         }
 
         Ok(Self {
-            socket: socket.unwrap_or_else(|| PathBuf::from(DEFAULT_SOCKET)),
+            control_socket: control_socket
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_CONTROL_SOCKET)),
             terminal: terminal.unwrap_or_else(|| TerminalName::new(DEFAULT_TERMINAL)),
             operation: operation.unwrap_or(TerminalSignalOperation::Connect),
         })
@@ -297,7 +301,7 @@ impl TerminalSignalArguments {
     }
 
     fn into_request(self) -> TerminalSignalRequest {
-        TerminalSignalRequest::new(self.socket, self.terminal, self.operation)
+        TerminalSignalRequest::new(self.control_socket, self.terminal, self.operation)
     }
 }
 

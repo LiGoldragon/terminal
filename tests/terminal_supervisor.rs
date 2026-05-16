@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::thread;
@@ -317,6 +317,24 @@ fn terminal_supervisor_answers_component_supervision_relation() {
         & 0o777;
     assert_eq!(mode, 0o600);
 
+    // The primary supervisor socket — the engine-facing one that
+    // resolves named terminals from Sema and forwards Signal control
+    // frames to terminal-cell — also honors PERSONA_SOCKET_MODE when
+    // the binary is spawned in the engine envelope. Per /189 §9, the
+    // ARCH constraint "Engine-spawned terminal sockets apply the
+    // managed PERSONA_SOCKET_MODE before accepting client traffic"
+    // needs a binary-spawn witness, not only a library-level one.
+    wait_for_socket(&fixture.supervisor_socket());
+    let supervisor_mode = fs::metadata(fixture.supervisor_socket())
+        .expect("supervisor socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        supervisor_mode, 0o600,
+        "spawned persona-terminal-supervisor applies PERSONA_SOCKET_MODE to its primary socket"
+    );
+
     let mut stream = UnixStream::connect(&supervision_socket).expect("client connects");
     let codec = SupervisionFrameCodec::new(1024 * 1024);
 
@@ -504,7 +522,7 @@ fn test_exchange() -> ExchangeIdentifier {
     )
 }
 
-fn wait_for_socket(socket: &PathBuf) {
+fn wait_for_socket(socket: &Path) {
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(5) {
         if socket.exists() {
