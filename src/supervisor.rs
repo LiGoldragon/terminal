@@ -487,8 +487,10 @@ impl TerminalSupervisor {
             self.record_terminal_event(&tables, event.clone())?;
             return Ok(event);
         };
-        let mut binding =
-            TerminalTransportBinding::from_socket_path(terminal, session.socket_path().as_str());
+        let mut binding = TerminalTransportBinding::from_socket_path(
+            terminal,
+            session.control_socket_path().as_str(),
+        );
         let event = binding.handle_request(request)?;
         self.record_terminal_event(&tables, event.clone())?;
         Ok(event)
@@ -518,7 +520,7 @@ impl TerminalSupervisor {
         Ok(TerminalSupervisorSubscriptionStart::Stream(
             TerminalSupervisorSubscriptionPlan::new(
                 subscription,
-                PathBuf::from(session.socket_path().as_str()),
+                PathBuf::from(session.control_socket_path().as_str()),
             ),
         ))
     }

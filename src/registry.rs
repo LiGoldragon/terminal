@@ -48,7 +48,7 @@ impl SessionResolveRequest {
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
         if let Some(session) = TerminalTables::open(&self.store)?.session(&self.terminal)? {
-            writeln!(output, "{}", session.socket_path().as_str())?;
+            writeln!(output, "{}", session.control_socket_path().as_str())?;
         } else {
             return Err(Error::UnknownTerminalSession {
                 terminal: self.terminal.as_str().to_string(),
@@ -71,9 +71,10 @@ impl SessionLine {
     fn write_to(&self, output: &mut impl Write) -> Result<()> {
         writeln!(
             output,
-            "{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}",
             self.session.terminal().as_str(),
-            self.session.socket_path().as_str(),
+            self.session.control_socket_path().as_str(),
+            self.session.data_socket_path().as_str(),
             self.session.state().as_str(),
             self.session.generation().into_u64(),
             self.session.transcript_sequence().into_u64()
@@ -133,12 +134,21 @@ impl SessionRegistration {
     pub fn ready(
         store: StoreLocation,
         terminal: TerminalName,
-        socket_path: impl Into<PathBuf>,
+        control_socket_path: impl Into<PathBuf>,
+        data_socket_path: impl Into<PathBuf>,
     ) -> Self {
-        let socket_path = socket_path.into().to_string_lossy().into_owned();
+        let control_socket_path = control_socket_path
+            .into()
+            .to_string_lossy()
+            .into_owned();
+        let data_socket_path = data_socket_path.into().to_string_lossy().into_owned();
         Self {
             store,
-            session: TerminalSessionObservation::ready(terminal, socket_path),
+            session: TerminalSessionObservation::ready(
+                terminal,
+                control_socket_path,
+                data_socket_path,
+            ),
         }
     }
 

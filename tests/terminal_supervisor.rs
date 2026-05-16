@@ -62,7 +62,11 @@ impl SupervisorFixture {
     }
 
     fn cell_socket(&self) -> PathBuf {
-        self.root.join("cell.sock")
+        self.root.join("cell.control.sock")
+    }
+
+    fn cell_data_socket(&self) -> PathBuf {
+        self.root.join("cell.data.sock")
     }
 
     fn supervisor_socket(&self) -> PathBuf {
@@ -170,9 +174,14 @@ fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
 fn terminal_supervisor_socket_routes_through_component_sema() {
     let fixture = SupervisorFixture::new("routes-through-sema");
     let terminal = TerminalName::new("operator");
-    SessionRegistration::ready(fixture.store(), terminal.clone(), fixture.cell_socket())
-        .record()
-        .expect("session registration is written");
+    SessionRegistration::ready(
+        fixture.store(),
+        terminal.clone(),
+        fixture.cell_socket(),
+        fixture.cell_data_socket(),
+    )
+    .record()
+    .expect("session registration is written");
 
     let cell_listener = UnixListener::bind(fixture.cell_socket()).expect("fake cell socket binds");
     let cell = thread::spawn({
@@ -383,9 +392,14 @@ fn terminal_supervisor_answers_component_supervision_relation() {
 fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     let fixture = SupervisorFixture::new("streams-lifecycle");
     let terminal = TerminalName::new("responder");
-    SessionRegistration::ready(fixture.store(), terminal.clone(), fixture.cell_socket())
-        .record()
-        .expect("session registration is written");
+    SessionRegistration::ready(
+        fixture.store(),
+        terminal.clone(),
+        fixture.cell_socket(),
+        fixture.cell_data_socket(),
+    )
+    .record()
+    .expect("session registration is written");
 
     let cell_listener = UnixListener::bind(fixture.cell_socket()).expect("fake cell socket binds");
     let cell = thread::spawn({

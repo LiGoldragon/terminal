@@ -58,7 +58,11 @@ fn terminal_sessions_are_component_sema_records() {
     let fixture = RegistryFixture::new("component-sema-records");
     let tables = fixture.tables();
     let terminal = TerminalName::new("operator");
-    let session = TerminalSessionObservation::ready(terminal.clone(), "/tmp/operator.sock");
+    let session = TerminalSessionObservation::ready(
+        terminal.clone(),
+        "/tmp/operator.control.sock",
+        "/tmp/operator.data.sock",
+    );
 
     tables.put_session(&session).expect("session is written");
 
@@ -67,23 +71,42 @@ fn terminal_sessions_are_component_sema_records() {
         .expect("session is readable")
         .expect("session exists");
     assert_eq!(stored.terminal(), &terminal);
-    assert_eq!(stored.socket_path().as_str(), "/tmp/operator.sock");
+    assert_eq!(
+        stored.control_socket_path().as_str(),
+        "/tmp/operator.control.sock"
+    );
+    assert_eq!(
+        stored.data_socket_path().as_str(),
+        "/tmp/operator.data.sock"
+    );
     assert_eq!(stored.state(), TerminalSessionState::Ready);
 }
 
 #[test]
-fn terminal_daemon_registration_writes_named_session() {
+fn terminal_daemon_registration_writes_named_session_with_typed_control_and_data_paths() {
     let fixture = RegistryFixture::new("daemon-registration");
     let terminal = TerminalName::new("assistant");
 
-    SessionRegistration::ready(fixture.store(), terminal.clone(), "/tmp/assistant.sock")
-        .record()
-        .expect("session registration is written");
+    SessionRegistration::ready(
+        fixture.store(),
+        terminal.clone(),
+        "/tmp/assistant.control.sock",
+        "/tmp/assistant.data.sock",
+    )
+    .record()
+    .expect("session registration is written");
 
     let rows = fixture.tables().sessions().expect("sessions are readable");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].terminal(), &terminal);
-    assert_eq!(rows[0].socket_path().as_str(), "/tmp/assistant.sock");
+    assert_eq!(
+        rows[0].control_socket_path().as_str(),
+        "/tmp/assistant.control.sock"
+    );
+    assert_eq!(
+        rows[0].data_socket_path().as_str(),
+        "/tmp/assistant.data.sock"
+    );
 
     let health = fixture
         .tables()

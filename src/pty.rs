@@ -206,6 +206,7 @@ impl DaemonArguments {
                 self.store.unwrap_or_else(StoreLocation::from_environment),
                 terminal,
                 self.control_socket.clone(),
+                self.data_socket.clone(),
             )
         });
         DaemonRequest {
