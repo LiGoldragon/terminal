@@ -57,7 +57,7 @@ test "$(stat -c '%a' "$control_socket")" = "600"
 test "$(stat -c '%a' "$data_socket")" = "600"
 
 "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-sessions" --store "$store" >"$sessions"
-expected_row="$(printf 'operator\t%s\tready' "$control_socket")"
+expected_row="$(printf 'operator\t%s\t%s\tready' "$control_socket" "$data_socket")"
 grep -Fq "$expected_row" "$sessions"
 
 resolved="$("$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-resolve" --store "$store" operator)"
