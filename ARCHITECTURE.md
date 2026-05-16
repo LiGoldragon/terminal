@@ -1,20 +1,20 @@
 # persona-terminal — architecture
 
-*Persona-facing terminal session owner built around terminal-cell.*
+*Persona-facing terminal session owner built around terminal-cell. Control
+plane only — raw viewer bytes flow viewer ↔ terminal-cell directly.*
 
-`persona-terminal` is the current owner of terminal byte transport. It keeps
-harness child processes alive in durable PTYs, lets visible viewers attach and
-detach, records terminal transcript truth, and moves raw input/resize/output
-frames between clients and the PTY. Its Persona-facing boundary is the typed
-`signal-persona-terminal` contract.
+`persona-terminal` owns the Persona-facing surface around named terminal
+sessions: typed control over Signal, component Sema registry, session
+metadata, viewer-adapter launch policy. The control plane lives here; the
+raw byte path lives in `terminal-cell`.
 
 `terminal-cell` is the low-level cell primitive: one child process group, one
-PTY, raw input ports, transcript replay, worker lifecycle observation, and one
-active viewer attachment. In production, each cell exposes a `control.sock` for
-Signal control and a `data.sock` for raw attached-viewer bytes. This repo is
-the Persona-facing owner around those cells: names, registry policy, typed
-terminal requests/events, component Sema metadata, and viewer-adapter launch
-policy.
+PTY, raw input ports, transcript replay, worker lifecycle observation, and
+one active viewer attachment. Each cell exposes two sockets — a `control.sock`
+for Signal control plus the byte-tag CLI protocol, and a `data.sock` for raw
+attached-viewer bytes. This repo is the Persona-facing owner around those
+cells: names, registry policy, typed terminal requests/events, component Sema
+metadata, and viewer-adapter launch policy.
 
 Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
 behind this same `persona-terminal` owner and must not become a repository
@@ -24,18 +24,31 @@ boundary.
 
 ## 0 · TL;DR
 
-This repo moves terminal bytes. It does not understand Persona message
-semantics, routing policy, provider quota policy, slash-command meaning, or
-authorization.
+This repo carries the Persona control plane for terminals. It does not
+understand Persona message semantics, routing policy, provider quota policy,
+slash-command meaning, or authorization, and it does not move raw viewer
+bytes.
 
 ```mermaid
 flowchart LR
-    "Codex or Claude harness" --- "terminal-cell daemon"
-    "terminal-cell daemon" -->|"data.sock: live bytes"| "visible viewer"
-    "visible viewer" -->|"data.sock: raw keyboard + resize frames"| "terminal-cell daemon"
-    "persona-harness" -->|"programmatic input bytes"| "persona-terminal"
-    "persona-terminal" -->|"control.sock: Signal control"| "terminal-cell daemon"
+    harness["persona-harness"]
+    pt["persona-terminal"]
+    cell["terminal-cell daemon"]
+    viewer["visible viewer"]
+    pty["child PTY"]
+
+    harness -- "Signal: prompt, gate, inject, capture" --> pt
+    pt -- "control.sock: Signal" --> cell
+    cell -- "control.sock: Signal events back" --> pt
+    pt -- "Signal events back" --> harness
+    viewer == "data.sock: raw bidirectional bytes" ==> cell
+    cell == "data.sock: live PTY output" ==> viewer
+    cell --> pty
 ```
+
+The control path (`persona-harness` → `persona-terminal` → terminal-cell
+`control.sock`) is typed Signal end to end. The data path (visible viewer ↔
+terminal-cell `data.sock`) is raw bytes; `persona-terminal` is not on it.
 
 ## 1 · Component Surface
 
@@ -131,28 +144,32 @@ This repo ships two distinct daemon binaries with clearly different scopes:
 `persona-terminal-daemon` is a **PTY-owning daemon**. It embeds the
 `terminal_cell` library to spawn a `TerminalCell` actor, hosts a
 `TerminalSignalControl` Kameo actor for prompt-pattern, gate, and injection
-control state, and binds **two** sockets — `--control-socket` for the byte-tag
-CLI protocol and Signal frames, `--data-socket` for raw attached-viewer bytes.
-On startup with a `--name`, it writes a `SessionRegistration` into the
-component Sema pointing at its control socket. The witness scripts under
+control state, and binds **two** sockets — `--control-socket` for the
+byte-tag CLI protocol and Signal frames, `--data-socket` for raw
+attached-viewer bytes. On startup with a `--name`, it writes a
+`SessionRegistration` into the component Sema recording both the control and
+data socket paths as separate typed fields. The witness scripts under
 `scripts/` use this daemon because they need a real PTY behind the Sema
 registry entry.
 
-`persona-terminal-supervisor` is a **registry frontend**, not a PTY owner. It
-binds one `signal-persona-terminal` socket (the `PERSONA_SOCKET_PATH`),
+`persona-terminal-supervisor` is a **registry frontend**, not a PTY owner.
+It binds one `signal-persona-terminal` socket (the `PERSONA_SOCKET_PATH`),
 answers `SupervisionRequest` traffic on the supervision socket, resolves
-named terminals from the component Sema, and **forwards** Signal frames to
-the registered terminal-cell control socket. It records `delivery_attempts`
-and `terminal_events`. It is the production engine-facing surface for
-sending typed control to terminals owned by separate cell daemons.
+named terminals from the component Sema, reads the resolved session's
+`control_socket_path`, and **forwards** Signal frames to that terminal-cell
+control socket. It records `delivery_attempts` and `terminal_events`. It is
+the production engine-facing surface for sending typed control to terminals
+owned by separate cell daemons. It does not connect to data sockets.
 
 Both binaries apply `PERSONA_SOCKET_MODE` to the sockets they bind.
 
-The Sema session record stores the terminal-cell control and data socket paths
-as separate fields. `persona-terminal` sends typed Signal control requests only
-to `control.sock`. Viewer adapters attach only to `data.sock`. A single
-terminal-cell socket that changes role by mode, message kind, or connection
-phase is not a production design.
+The Sema session record stores both terminal-cell socket paths as typed
+fields: `control_socket_path` for Signal control requests and
+`data_socket_path` for attached viewer byte transport. `persona-terminal`
+sends typed Signal control requests only to the control socket; viewer
+adapters attach only to the data socket. A single terminal-cell socket that
+changes role by mode, message kind, or connection phase is not a valid
+shape.
 
 `TerminalSignalControl` is the first Kameo actor in this repo's supervisor
 direction. It owns prompt-pattern registry state, signal input-gate leases,
@@ -194,131 +211,215 @@ the redb file, table declarations, write sequencing, and read consistency.
 
 ## 4 · Constraints
 
+Each line is an obligation; each load-bearing constraint has a witness in §5.
+
+### 4.1 · Lifecycle and ownership
+
 - The terminal session owner owns one child process group and its PTY for the
   lifetime of the session.
 - Viewer attach, detach, close, crash, or replacement never owns or kills the
   child process.
-- Terminal transcript is append-only truth. Every output byte read from the PTY
-  master receives a terminal generation and sequence before any viewer replay,
-  screen projection, or capture result.
-- Reattach is sequence-based. A viewer reconnects from a known terminal
-  sequence, receives replayed transcript bytes, then receives live deltas from
-  the same stream.
-- Screen state and scrollback views are derived projections. They may use
-  `vt100`, `termwiz`, or viewer-native state, but they are never the source of
-  truth.
-- Terminal input is raw byte transport. `TerminalInputBytes` are written to the
-  PTY without Persona-message parsing, shell parsing, slash-command parsing, or
-  provider quota semantics in the terminal owner.
-- Named terminal sessions are component state. The daemon records them through
-  `persona-terminal`'s component Sema; no registry JSON, text manifest, or
-  viewer-specific state file is the source of truth.
-- The supervisor socket resolves terminal names through component Sema before
-  terminal effects. Callers send `signal-persona-terminal` frames to
-  `persona-terminal`, not directly to stored terminal-cell sockets.
-- `persona-terminal` owns the control plane (typed Signal); it does not route
-  raw viewer bytes. Raw bytes flow direct viewer ↔ terminal-cell `data.sock`.
-- The terminal registry records the terminal-cell `control.sock` path as the
-  named session's authoritative socket. The matching `data.sock` is the
-  sibling at the same runtime directory. Signal control requests connect to
-  `control.sock`; attached viewer byte transport connects to `data.sock`.
+- Terminal transcript is append-only truth. Every output byte read from the
+  PTY master receives a terminal generation and sequence before any viewer
+  replay, screen projection, or capture result.
+
+### 4.2 · Control plane vs data plane
+
+- `persona-terminal` owns the control plane only. Typed Signal frames flow
+  `persona-terminal` ↔ terminal-cell `control.sock`.
+- Raw attached-viewer bytes flow viewer ↔ terminal-cell `data.sock` and never
+  traverse `persona-terminal`.
+- The terminal registry records the terminal-cell control and data socket
+  paths as separate typed fields. Signal control clients dial
+  `control_socket_path`; viewer adapters dial `data_socket_path`.
 - Viewer adapters never connect to the Signal control socket. Signal clients
   never carry live attached-viewer bytes.
-- There is no production single-socket mode-shift path between terminal-cell
-  control and data roles. `persona-terminal-daemon` binds **both** listeners;
-  the control listener serves the byte-tag CLI protocol and Signal frames,
-  the data listener accepts only an attach handshake followed by raw bytes.
-  An attach request on the control listener is explicitly rejected; any
-  non-attach request on the data listener is explicitly rejected.
-- The supervisor binary accepts explicit `--socket` / `--store` overrides for
-  tests, but the engine path is the Persona spawn envelope:
-  `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
-- Engine-spawned terminal sockets apply the managed `PERSONA_SOCKET_MODE`
-  before accepting client traffic.
+- `persona-terminal-daemon` binds **both** listeners. The control listener
+  serves the byte-tag CLI protocol and Signal frames; the data listener
+  accepts only an attach handshake followed by raw bytes. An attach request
+  on the control listener is rejected; any non-attach request on the data
+  listener is rejected.
+- There is no single-socket mode-shift path between terminal-cell control
+  and data roles.
+- Slow transcript work in `terminal-cell` does not back-pressure into the
+  attached viewer's data plane.
+
+### 4.3 · Daemon and supervisor binaries
+
+- `persona-terminal-daemon` is a PTY-owning daemon. It embeds the
+  `terminal_cell` library, hosts `TerminalSignalControl`, binds
+  `--control-socket` and `--data-socket`, and on `--name` writes a
+  `SessionRegistration` into the component Sema.
+- `persona-terminal-supervisor` is a registry frontend. It binds one
+  `signal-persona-terminal` socket, answers `SupervisionRequest` traffic,
+  resolves named terminals from component Sema, and forwards Signal frames
+  to the registered terminal-cell control socket. It does not own a PTY.
+- Both binaries apply `PERSONA_SOCKET_MODE` (mode 0600 by default) to every
+  socket they bind.
+- The supervisor binary accepts explicit `--socket` / `--store` overrides
+  for tests; the engine path reads `PERSONA_SOCKET_PATH` and
+  `PERSONA_STATE_PATH` from the Persona spawn envelope, not ambient
+  environment.
+
+### 4.4 · Reattach and viewer
+
+- Reattach is sequence-based. A viewer reconnects from a known terminal
+  sequence, receives replayed transcript bytes, then receives live deltas
+  from the same stream.
+- Screen state and scrollback views are derived projections. They may use
+  `vt100`, `termwiz`, or viewer-native state, but they are never the source
+  of truth.
+
+### 4.5 · Wire and registry
+
+- Named terminal sessions are component state. The daemon records them in
+  `persona-terminal`'s component Sema; no registry JSON, text manifest, or
+  viewer-specific state file is the source of truth.
+- The supervisor socket resolves terminal names through component Sema
+  before terminal effects. Callers send `signal-persona-terminal` frames to
+  `persona-terminal`, not directly to stored terminal-cell sockets.
 - Supervisor-request state is committed around the terminal effect:
   `delivery_attempts` before forwarding, `terminal_events` after the typed
-  event returns. Viewer attachments, session health, and session archive records
-  are first-class component Sema tables.
-- Session registration records both the named terminal session and the
-  ready-state session health row in component Sema.
+  event returns. Viewer attachments, session health, and session archive
+  records are first-class component Sema tables.
+- Session registration records both the named terminal session (with typed
+  control and data socket paths) and the ready-state session-health row in
+  component Sema.
+
+### 4.6 · Subscriptions
+
 - Subscription requests are streams, not one-shot lookups. The supervisor
-  resolves the named terminal once, forwards the typed subscription frame to
-  the registered terminal socket, relays the initial state and each live delta,
-  and records every typed event it observes.
-- Programmatic input and viewer keyboard input enter through the same terminal
-  input port and produce the same accepted/rejected terminal event shape.
-- Harness slash-command usage probes are harness-adapter behavior. The terminal
-  owner may carry bytes such as `/usage\r`, but quota interpretation belongs in
-  `persona-harness` or a harness contract.
+  resolves the named terminal once, forwards the typed subscription frame
+  to the registered terminal control socket, relays the initial state and
+  each live delta, and records every typed event it observes.
+- Subscription close is a typed retract/close request on the control plane.
+  The supervisor forwards the retract; the server emits a final
+  acknowledgement event; the stream ends. Raw socket close is not semantic
+  protocol.
+
+### 4.7 · Input
+
+- Terminal input is raw byte transport. `TerminalInputBytes` reach the PTY
+  without Persona-message parsing, shell parsing, slash-command parsing, or
+  provider quota semantics in the terminal owner.
+- Programmatic input and viewer keyboard input enter through the same
+  terminal input port and produce the same accepted/rejected terminal event
+  shape.
+- Programmatic injection and human keypresses are serialized through one
+  PTY writer per cell; the input gate is the writer-side arbitrator.
+- Harness slash-command usage probes are harness-adapter behavior. The
+  terminal owner may carry bytes such as `/usage\r`, but quota
+  interpretation belongs in `persona-harness` or a harness contract.
+
+### 4.8 · Push and scope
+
 - The terminal owner pushes readiness, transcript, resize, detach, capture,
   exit, and rejection events. Polling is not the steady-state observation
   mechanism.
-- The terminal owner provides no pane, tab, status-bar, copy-mode, prefix-key,
-  or application-level input grammar. Out-of-band control uses typed socket or
-  Signal requests; attached keyboard bytes pass to the PTY as terminal input.
+- The terminal owner provides no pane, tab, status-bar, copy-mode,
+  prefix-key, or application-level input grammar. Out-of-band control uses
+  typed socket or Signal requests; attached keyboard bytes pass to the PTY
+  as terminal input.
 
 ## 5 · Witnesses
 
-- Durable owner: spawn a child that writes after the viewer exits; reattach and
-  prove the child is still alive and the detached output is replayed.
-- Sequence replay: attach at sequence N, detach, emit output, reconnect from N,
-  and assert replay starts at N+1 before live deltas.
-- Raw pass-through: send bytes containing escape sequences, bracketed-paste
-  markers, and `/usage\r` to a fixture process; assert the transcript shows the
-  exact byte path and the terminal crate contains no quota or slash parser.
-- Shared input port: send equivalent bytes through viewer keyboard frames and
-  programmatic `TerminalInput`; assert both produce the same terminal event
-  path.
-- Harness-owned quota: fake harness adapter maps a usage probe to raw terminal
-  input and parses a fixture transcript into a harness observation; terminal
-  transport contains only byte transport.
-- Component Sema registry: start or register a named terminal session, read it
-  back with the session inspection CLI, and prove the socket path came from the
-  Sema table. The same witness sets `PERSONA_SOCKET_MODE=600` before launching
-  `persona-terminal-daemon` and verifies the terminal-cell socket metadata. The
-  flake exposes this stateful witness as
+### 5.1 · Lifecycle and viewer
+
+- **Durable owner**: spawn a child that writes after the viewer exits;
+  reattach and prove the child is still alive and the detached output is
+  replayed.
+- **Sequence replay**: attach at sequence N, detach, emit output, reconnect
+  from N, and assert replay starts at N+1 before live deltas.
+
+### 5.2 · Control plane vs data plane
+
+- **Two-socket registration**: starting `persona-terminal-daemon` with
+  `--name` writes a `SessionRegistration` whose typed
+  `control_socket_path` and `data_socket_path` fields point at the daemon's
+  bound listeners. Reading the row back through the registry returns both.
+- **Supervisor uses control socket**: the supervisor resolves a named
+  terminal, reads `control_socket_path` from the Sema session row, and
+  forwards Signal frames only to that socket. The data socket is not
+  opened by the supervisor.
+- **Plane rejection (terminal-cell)**: the underlying terminal-cell daemon
+  rejects an `Attach` request on `control.sock` and rejects every
+  non-`Attach` request on `data.sock`; the supervisor's typed errors
+  reflect these rejections.
+
+### 5.3 · Input
+
+- **Raw pass-through**: send bytes containing escape sequences,
+  bracketed-paste markers, and `/usage\r` to a fixture process; assert the
+  transcript shows the exact byte path and the terminal crate contains no
+  quota or slash parser.
+- **Shared input port**: send equivalent bytes through viewer keyboard
+  frames and programmatic `TerminalInput`; assert both produce the same
+  terminal event path.
+- **Harness-owned quota**: a fake harness adapter maps a usage probe to
+  raw terminal input and parses a fixture transcript into a harness
+  observation; terminal transport contains only byte transport.
+
+### 5.4 · Registry and Sema
+
+- **Component Sema registry**: register a named terminal session, read it
+  back with the session inspection CLI, and prove both socket paths came
+  from the Sema table. The same witness sets `PERSONA_SOCKET_MODE=600`
+  before launching `persona-terminal-daemon` and verifies the
+  terminal-cell socket metadata. Exposed as
   `nix run .#test-named-session-registry`.
-- Session-health registration: register a named terminal session through
-  `SessionRegistration`, then read `session_health` and prove a ready row with
-  generation 1 exists. The flake exposes this as
+- **Session-health registration**: register a named terminal session
+  through `SessionRegistration`, then read `session_health` and prove a
+  ready row with generation 1 exists. Exposed as
   `nix flake check .#terminal-registration-writes-session-health`.
-- Signal-to-terminal-cell: start a real terminal-cell-backed daemon, resolve
-  its named socket from Sema, send `TerminalConnection`, `TerminalInput`, and
-  `TerminalCapture` through the `signal-persona-terminal` adapter, and prove
-  captured bytes came from the child PTY. The flake exposes this stateful
-  witness as `nix run .#test-terminal-signal`.
-- Gate-and-cache injection: start a real terminal-cell-backed daemon, register
-  a prompt pattern, acquire an input gate with clean prompt state, send viewer
-  bytes while locked, prove those bytes do not reach the PTY before release,
-  inject under the lease, release the gate, and prove cached human bytes replay
-  afterward. The flake exposes this stateful witness as
-  `nix run .#test-gate-cache`.
-- Dirty prompt defers injection: type a human draft before acquiring the gate,
-  acquire with a prompt pattern, observe `PromptState::Dirty`, attempt
-  injection, and prove the bytes are rejected instead of reaching the PTY. The
-  flake exposes this stateful witness as
-  `nix run .#test-dirty-prompt-defers`.
-- Actor-owned signal control: the pure test suite asserts
+- **T6 table coverage**: write and read `delivery_attempts`,
+  `terminal_events`, `viewer_attachments`, `session_health`, and
+  `session_archive` through `TerminalTables`; the default flake check
+  runs this witness.
+
+### 5.5 · Signal control flow
+
+- **Signal-to-terminal-cell**: start a real terminal-cell-backed daemon,
+  resolve its named control socket from Sema, send `TerminalConnection`,
+  `TerminalInput`, and `TerminalCapture` through the
+  `signal-persona-terminal` adapter, and prove captured bytes came from
+  the child PTY. Exposed as `nix run .#test-terminal-signal`.
+- **Gate-and-cache injection**: register a prompt pattern, acquire an
+  input gate with clean prompt state, send viewer bytes while locked,
+  prove those bytes do not reach the PTY before release, inject under
+  the lease, release the gate, and prove cached human bytes replay
+  afterward. Exposed as `nix run .#test-gate-cache`.
+- **Dirty prompt defers injection**: type a human draft before acquiring
+  the gate, acquire with a prompt pattern, observe `PromptState::Dirty`,
+  attempt injection, and prove the bytes are rejected instead of
+  reaching the PTY. Exposed as `nix run .#test-dirty-prompt-defers`.
+- **Actor-owned signal control**: the pure test suite asserts
   `TerminalSignalControl` is a Kameo actor with typed messages and that
-  production terminal-control state does not use shared `Arc<Mutex<_>>` state.
-- Supervisor socket routing: send one `signal-persona-terminal` request to the
-  supervisor socket, prove it resolves the named session through component Sema,
-  forwards the frame to the registered terminal socket, records the delivery
-  attempt and terminal event, and returns the typed terminal event. The flake
-  exposes this as
+  production terminal-control state does not use shared
+  `Arc<Mutex<_>>` state.
+
+### 5.6 · Supervisor routing
+
+- **Supervisor socket routing**: send one `signal-persona-terminal`
+  request to the supervisor socket, prove it resolves the named session
+  through component Sema, forwards the frame to the registered terminal
+  control socket, records the delivery attempt and terminal event, and
+  returns the typed terminal event. Exposed as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
-- Supervisor subscription routing: send
-  `SubscribeTerminalWorkerLifecycle` to the supervisor socket, prove it records
-  the attempt, relays an initial lifecycle snapshot and a following lifecycle
-  delta from the registered terminal socket, and persists both typed events.
-- Spawn-envelope startup: construct `persona-terminal-supervisor` without CLI
-  path arguments and prove it resolves its socket and component Sema path from
-  `PERSONA_SOCKET_PATH` and `PERSONA_STATE_PATH`.
-- Supervisor socket mode: bind `persona-terminal-supervisor` with an explicit
-  managed socket mode and prove the real Unix socket metadata is mode 0600.
-- T6 table coverage: write and read `delivery_attempts`, `terminal_events`,
-  `viewer_attachments`, `session_health`, and `session_archive` through
-  `TerminalTables`; the default flake check runs this witness.
+- **Supervisor subscription routing**: send
+  `SubscribeTerminalWorkerLifecycle` to the supervisor socket, prove it
+  records the attempt, relays an initial lifecycle snapshot and a
+  following lifecycle delta from the registered terminal control socket,
+  and persists both typed events.
+- **Spawn-envelope startup**: construct `persona-terminal-supervisor`
+  without CLI path arguments and prove it resolves its socket and
+  component Sema path from `PERSONA_SOCKET_PATH` and
+  `PERSONA_STATE_PATH`.
+- **Supervisor socket mode**: bind `persona-terminal-supervisor` with an
+  explicit managed socket mode and prove the real Unix socket metadata
+  is mode 0600 on the primary supervisor socket.
+- **Supervisor binary applies mode**: the spawned
+  `persona-terminal-supervisor` binary applies `PERSONA_SOCKET_MODE` to
+  both its supervision socket and its primary supervisor socket.
 
 ## 6 · Invariants
 
