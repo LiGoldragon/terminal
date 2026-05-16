@@ -11,16 +11,17 @@ use signal_core::{
     SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
 use signal_persona_terminal::{
-    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptObservation, TerminalEvent,
-    TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
-    TerminalObservationSequence, TerminalOperationKind, TerminalRejected, TerminalRejectionReason,
-    TerminalReply, TerminalRequest,
+    SubscribeTerminalWorkerLifecycle, TerminalDaemonConfiguration,
+    TerminalDeliveryAttemptObservation, TerminalEvent, TerminalEventObservation, TerminalFrame,
+    TerminalFrameBody as FrameBody, TerminalName, TerminalObservationSequence,
+    TerminalOperationKind, TerminalRejected, TerminalRejectionReason, TerminalReply,
+    TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
 use crate::error::{Error, Result};
 use crate::socket::SocketMode;
-use crate::supervision::{SupervisionListener, SupervisionProfile};
+use crate::supervision::{SupervisionListener, SupervisionProfile, SupervisionSocketMode};
 use crate::tables::{StoreLocation, TerminalTables};
 
 fn synthetic_exchange() -> ExchangeIdentifier {
@@ -44,14 +45,37 @@ pub struct TerminalSupervisorDaemon {
     socket: PathBuf,
     store: StoreLocation,
     socket_mode: Option<SocketMode>,
+    supervision: Option<SupervisionListener>,
 }
 
 impl TerminalSupervisorDaemon {
+    /// Canonical constructor — every production launch reads typed
+    /// `TerminalDaemonConfiguration` from argv via `nota-config` and
+    /// hands the record here.
+    pub fn from_configuration(configuration: TerminalDaemonConfiguration) -> Self {
+        let supervision = SupervisionListener::new(
+            SupervisionProfile::terminal(),
+            PathBuf::from(configuration.supervision_socket_path.as_str()),
+            SupervisionSocketMode::from_octal(
+                configuration.supervision_socket_mode.into_u32(),
+            ),
+        );
+        Self {
+            socket: PathBuf::from(configuration.terminal_socket_path.as_str()),
+            store: StoreLocation::new(configuration.store_path.as_str()),
+            socket_mode: Some(SocketMode::from_octal(
+                configuration.terminal_socket_mode.into_u32(),
+            )),
+            supervision: Some(supervision),
+        }
+    }
+
     pub fn from_socket(socket: impl Into<PathBuf>) -> Self {
         Self {
             socket: socket.into(),
             store: StoreLocation::from_environment(),
-            socket_mode: SocketMode::from_environment(),
+            socket_mode: None,
+            supervision: None,
         }
     }
 
@@ -74,10 +98,9 @@ impl TerminalSupervisorDaemon {
     }
 
     pub fn run(self) -> Result<()> {
+        let supervision = self.supervision.clone();
         let bound = self.bind()?;
-        let _supervision = SupervisionListener::from_environment(SupervisionProfile::terminal())
-            .map(SupervisionListener::spawn)
-            .transpose()?;
+        let _supervision = supervision.map(SupervisionListener::spawn).transpose()?;
         eprintln!(
             "persona-terminal-supervisor socket={}",
             bound.socket.display()

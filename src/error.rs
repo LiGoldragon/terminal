@@ -10,6 +10,9 @@ pub enum Error {
     #[error("sema: {0}")]
     Sema(#[from] sema::Error),
 
+    #[error("nota-config: {0}")]
+    NotaConfig(#[from] nota_config::Error),
+
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
 

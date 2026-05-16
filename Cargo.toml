@@ -50,12 +50,15 @@ path = "src/bin/persona-terminal-supervisor.rs"
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
+nota-codec   = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
+nota-config  = { git = "https://github.com/LiGoldragon/nota-config.git", branch = "main" }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-core  = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-hook  = "0.3"
 signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
+signal-persona-auth = { git = "https://github.com/LiGoldragon/signal-persona-auth.git" }
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"

@@ -305,16 +305,32 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 
 #[test]
 fn terminal_supervisor_answers_component_supervision_relation() {
+    use nota_codec::{Encoder, NotaEncode};
+    use signal_persona::{SocketMode as WireSocketMode, WirePath};
+    use signal_persona_auth::{OwnerIdentity, UnixUserId};
+    use signal_persona_terminal::TerminalDaemonConfiguration;
+
     let fixture = SupervisorFixture::new("supervision");
     let supervision_socket = fixture.supervision_socket();
+    let configuration_path = fixture.root.join("terminal-daemon.nota");
+    let configuration = TerminalDaemonConfiguration {
+        terminal_socket_path: WirePath::new(fixture.supervisor_socket().display().to_string()),
+        terminal_socket_mode: WireSocketMode::new(0o600),
+        supervision_socket_path: WirePath::new(supervision_socket.display().to_string()),
+        supervision_socket_mode: WireSocketMode::new(0o600),
+        store_path: WirePath::new(fixture.store().as_path().display().to_string()),
+        owner_identity: OwnerIdentity::UnixUser(UnixUserId::new(1000)),
+    };
+    let mut encoder = Encoder::new();
+    configuration
+        .encode(&mut encoder)
+        .expect("encode terminal config");
+    let mut text = encoder.into_string();
+    text.push('\n');
+    fs::write(&configuration_path, text).expect("write terminal config");
+
     let mut child = Command::new(env!("CARGO_BIN_EXE_persona-terminal-supervisor"))
-        .arg("--socket")
-        .arg(fixture.supervisor_socket())
-        .arg("--store")
-        .arg(fixture.store().as_path())
-        .env("PERSONA_SOCKET_MODE", "600")
-        .env("PERSONA_SUPERVISION_SOCKET_PATH", &supervision_socket)
-        .env("PERSONA_SUPERVISION_SOCKET_MODE", "600")
+        .arg(&configuration_path)
         .spawn()
         .expect("persona-terminal-supervisor starts");
 
