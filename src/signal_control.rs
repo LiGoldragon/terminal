@@ -421,7 +421,10 @@ impl TerminalSignalControl {
     fn worker_kind(worker: TerminalWorkerKind) -> terminal_signal::TerminalWorkerKind {
         match worker {
             TerminalWorkerKind::InputWriter => terminal_signal::TerminalWorkerKind::InputWriter,
-            TerminalWorkerKind::OutputFanout => terminal_signal::TerminalWorkerKind::OutputFanout,
+            TerminalWorkerKind::ViewerFanout => terminal_signal::TerminalWorkerKind::ViewerFanout,
+            TerminalWorkerKind::TranscriptScriber => {
+                terminal_signal::TerminalWorkerKind::TranscriptScriber
+            }
             TerminalWorkerKind::OutputReader => terminal_signal::TerminalWorkerKind::OutputReader,
             TerminalWorkerKind::ChildExitWatcher => {
                 terminal_signal::TerminalWorkerKind::ChildExitWatcher
@@ -445,6 +448,9 @@ impl TerminalSignalControl {
             }
             TerminalWorkerStop::OutputCommandChannelClosed => {
                 terminal_signal::TerminalWorkerStopReason::OutputCommandChannelClosed
+            }
+            TerminalWorkerStop::TranscriptNoticeChannelClosed => {
+                terminal_signal::TerminalWorkerStopReason::TranscriptNoticeChannelClosed
             }
             TerminalWorkerStop::OutputReaderFinished => {
                 terminal_signal::TerminalWorkerStopReason::OutputReaderFinished

@@ -842,7 +842,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#28c5ebfc017ee27347af323e66ccdfc83e2bcdd0"
+source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#b204eba64ee0e566c93c81c282fb4aeaff869c7e"
 dependencies = [
  "nota-codec",
  "rkyv",
@@ -882,7 +882,7 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#d45056010b89b4050396aaf9a06bb773efaa2632"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#0cf45120974d8147daa4954800cdd841deaa4774"
 dependencies = [
  "crossterm",
  "kameo",
