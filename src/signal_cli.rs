@@ -10,13 +10,13 @@ use signal_persona_terminal::{
     AcquireInputGate, GateAcquired, GateBusy, GateReleased, InjectionAck, InjectionRejected,
     InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns, PromptPattern,
     PromptPatternBytes, PromptPatternList, PromptPatternRegistered, PromptPatternUnregistered,
-    PromptState, RegisterPromptPattern, ReleaseInputGate, SessionCreated, SessionList,
-    SessionResolved, SessionRetired, SubscribeTerminalWorkerLifecycle, SubscriptionRetracted,
-    TerminalCapture, TerminalCaptured, TerminalColumns, TerminalConnection, TerminalDetached,
-    TerminalFrame as Frame, TerminalFrameBody as FrameBody, TerminalInput, TerminalInputAccepted,
-    TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected, TerminalReply,
-    TerminalRequest, TerminalResize, TerminalResized, TerminalRows,
-    TerminalWorkerLifecycleSnapshot, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
+    PromptState, RegisterPromptPattern, ReleaseInputGate, SessionList, SessionResolved,
+    SubscribeTerminalWorkerLifecycle, SubscriptionRetracted, TerminalCapture, TerminalCaptured,
+    TerminalColumns, TerminalConnection, TerminalDetached, TerminalFrame as Frame,
+    TerminalFrameBody as FrameBody, TerminalInput, TerminalInputAccepted, TerminalInputBytes,
+    TerminalName, TerminalReady, TerminalRejected, TerminalReply, TerminalRequest, TerminalResize,
+    TerminalResized, TerminalRows, TerminalWorkerLifecycleSnapshot, TranscriptDelta,
+    UnregisterPromptPattern, WriteInjection,
 };
 
 use crate::pty::TerminalSocket;
@@ -542,21 +542,6 @@ impl TerminalEventLine {
             // via StreamingFrameBody::SubscriptionEvent, not as a
             // reply. The CLI's reply-reading path no longer receives
             // it; a separate subscription-event reader handles those.
-            TerminalReply::SessionCreated(SessionCreated {
-                name,
-                data_socket_path,
-            }) => writeln!(
-                output,
-                "SessionCreated\t{}\t{}",
-                name.as_str(),
-                data_socket_path.as_str()
-            )?,
-            TerminalReply::SessionRetired(SessionRetired { name, exit_status }) => writeln!(
-                output,
-                "SessionRetired\t{}\t{:?}",
-                name.as_str(),
-                exit_status
-            )?,
             TerminalReply::SessionList(SessionList { entries }) => {
                 writeln!(output, "SessionList\t{}", entries.len())?
             }

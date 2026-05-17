@@ -61,6 +61,7 @@ rkyv         = { version = "0.8", default-features = false, features = ["std", "
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-core  = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-hook  = "0.3"
+owner-signal-persona-terminal = { git = "https://github.com/LiGoldragon/owner-signal-persona-terminal.git", branch = "main" }
 signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
 signal-persona-auth = { git = "https://github.com/LiGoldragon/signal-persona-auth.git" }
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }

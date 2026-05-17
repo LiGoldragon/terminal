@@ -446,6 +446,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "owner-signal-persona-terminal"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/owner-signal-persona-terminal.git?branch=main#9753806fdcb43c62bb863e5094b7347dfa79bd41"
+dependencies = [
+ "nota-codec",
+ "rkyv",
+ "signal-core",
+ "signal-persona",
+ "signal-persona-terminal",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -476,6 +489,7 @@ dependencies = [
  "kameo",
  "nota-codec",
  "nota-config",
+ "owner-signal-persona-terminal",
  "regex",
  "rkyv",
  "sema",
@@ -855,7 +869,7 @@ dependencies = [
 [[package]]
 name = "signal-persona-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#170973537aaff818edaba311f3e6845242039af0"
+source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#f9d4c75da3b6851170f66d20fd94cc5bb242924c"
 dependencies = [
  "nota-codec",
  "nota-config",

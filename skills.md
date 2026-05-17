@@ -10,6 +10,9 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - This repo owns the component communication plane. Typed Signal flows over
   `persona-terminal`'s communication socket; supervision uses a separate
   supervision socket.
+- Ordinary terminal Signal uses `signal-persona-terminal`. Owner-only
+  session lifecycle mutation uses `owner-signal-persona-terminal`; do not
+  put `CreateSession` / `RetireSession` back into the ordinary contract.
 - Raw viewer bytes flow viewer ↔ session data path directly. They do not
   cross the component communication socket.
 - The Sema session registry records two typed fields per cell:
@@ -25,6 +28,9 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - `persona-terminal-daemon` is the production component daemon. It binds a
   communication socket and a supervision socket, owns component Sema, and
   owns terminal session actors built on the `terminal_cell` library.
+- The owner terminal surface is part of the same component owner. It is not
+  a separate daemon; it is the authority-limited request vocabulary used by
+  the orchestrate/harness chain to create or retire terminal sessions.
 - `persona-terminal-supervisor` and the old one-PTY `persona-terminal-daemon`
   behavior are transitional implementation steps. Keep their witnesses useful
   while folding their behavior into the consolidated component daemon.

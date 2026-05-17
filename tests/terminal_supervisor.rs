@@ -8,9 +8,15 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use owner_signal_persona_terminal::{
+    CreateSession, OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
+    OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason, TerminalCommand,
+    TerminalCommandExecutable,
+};
 use persona_terminal::registry::SessionRegistration;
 use persona_terminal::supervisor::{
-    TerminalSupervisorCommandLine, TerminalSupervisorDaemon, TerminalSupervisorFrameCodec,
+    TerminalSupervisor, TerminalSupervisorCommandLine, TerminalSupervisorDaemon,
+    TerminalSupervisorFrameCodec, TerminalSupervisorOwnerRequest,
 };
 use persona_terminal::tables::{StoreLocation, TerminalTables};
 use persona_terminal::{SocketMode, SupervisionFrameCodec};
@@ -390,6 +396,41 @@ fn terminal_supervisor_lists_sessions_without_contacting_cells() {
 
     assert_eq!(entries, expected_entries);
     assert_eq!(served.join().expect("supervisor server joins"), event);
+}
+
+#[test]
+fn terminal_supervisor_owner_request_reaches_owner_surface_without_ordinary_variant() {
+    let fixture = SupervisorFixture::new("owner-session-unimplemented");
+    let runtime = tokio::runtime::Runtime::new().expect("runtime starts");
+    let supervisor = runtime.block_on(TerminalSupervisor::start(fixture.store()));
+    let request = OwnerTerminalRequest::CreateSession(CreateSession {
+        name: TerminalName::new("operator"),
+        command: TerminalCommand {
+            executable: TerminalCommandExecutable::new("pi"),
+            arguments: Vec::new(),
+        },
+        environment: Vec::new(),
+        working_directory: None,
+    });
+
+    let reply = runtime.block_on(async {
+        supervisor
+            .ask(TerminalSupervisorOwnerRequest::new(request))
+            .await
+            .expect("owner request reaches supervisor actor")
+    });
+
+    assert_eq!(
+        reply.into_reply(),
+        OwnerTerminalReply::OwnerTerminalRequestUnimplemented(OwnerTerminalRequestUnimplemented {
+            terminal: TerminalName::new("operator"),
+            operation: OwnerTerminalOperationKind::CreateSession,
+            reason: OwnerTerminalUnimplementedReason::NotBuiltYet,
+        })
+    );
+    runtime
+        .block_on(TerminalSupervisor::stop(supervisor))
+        .expect("supervisor stops");
 }
 
 #[test]

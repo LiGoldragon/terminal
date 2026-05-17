@@ -106,14 +106,13 @@ impl TerminalTransportBinding {
                     token.terminal.clone(),
                     TerminalRequest::TerminalWorkerLifecycleRetraction(token),
                 ),
-            TerminalRequest::CreateSession(_)
-            | TerminalRequest::RetireSession(_)
-            | TerminalRequest::ListSessions(_)
-            | TerminalRequest::ResolveSession(_) => Err(Error::InvalidArgument {
+            TerminalRequest::ListSessions(_) | TerminalRequest::ResolveSession(_) => Err(
+                Error::InvalidArgument {
                 detail:
-                    "session registry requests belong to the consolidated persona-terminal daemon"
+                    "session registry queries belong to the consolidated persona-terminal daemon"
                         .to_string(),
-            }),
+                },
+            ),
         }
     }
 

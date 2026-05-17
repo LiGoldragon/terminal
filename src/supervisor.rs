@@ -6,6 +6,10 @@ use std::path::PathBuf;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
+use owner_signal_persona_terminal::{
+    OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
+    OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason,
+};
 use signal_core::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
     SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
@@ -440,16 +444,20 @@ pub enum TerminalSupervisorSignalOutput {
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct TerminalSupervisorState {
     pub served_request_count: u64,
+    pub served_owner_request_count: u64,
     pub recorded_event_count: u64,
     pub last_operation: Option<TerminalOperationKind>,
+    pub last_owner_operation: Option<OwnerTerminalOperationKind>,
 }
 
 #[derive(Debug)]
 pub struct TerminalSupervisor {
     store: StoreLocation,
     served_request_count: u64,
+    served_owner_request_count: u64,
     recorded_event_count: u64,
     last_operation: Option<TerminalOperationKind>,
+    last_owner_operation: Option<OwnerTerminalOperationKind>,
 }
 
 impl TerminalSupervisor {
@@ -457,8 +465,10 @@ impl TerminalSupervisor {
         Self {
             store,
             served_request_count: 0,
+            served_owner_request_count: 0,
             recorded_event_count: 0,
             last_operation: None,
+            last_owner_operation: None,
         }
     }
 
@@ -482,8 +492,10 @@ impl TerminalSupervisor {
     fn state(&self) -> TerminalSupervisorState {
         TerminalSupervisorState {
             served_request_count: self.served_request_count,
+            served_owner_request_count: self.served_owner_request_count,
             recorded_event_count: self.recorded_event_count,
             last_operation: self.last_operation,
+            last_owner_operation: self.last_owner_operation,
         }
     }
 
@@ -495,22 +507,6 @@ impl TerminalSupervisor {
         match request {
             TerminalRequest::ListSessions(list) => return self.list_sessions(list),
             TerminalRequest::ResolveSession(resolve) => return self.resolve_session(resolve),
-            TerminalRequest::CreateSession(create) => {
-                return self.reject_session_mutation(
-                    sequence,
-                    create.name.clone(),
-                    TerminalOperationKind::CreateSession,
-                    TerminalRequest::CreateSession(create),
-                );
-            }
-            TerminalRequest::RetireSession(retire) => {
-                return self.reject_session_mutation(
-                    sequence,
-                    retire.name.clone(),
-                    TerminalOperationKind::RetireSession,
-                    TerminalRequest::RetireSession(retire),
-                );
-            }
             other => self.forward_terminal_request(sequence, other),
         }
     }
@@ -576,28 +572,6 @@ impl TerminalSupervisor {
         .into())
     }
 
-    fn reject_session_mutation(
-        &mut self,
-        sequence: u64,
-        terminal: TerminalName,
-        operation: TerminalOperationKind,
-        _request: TerminalRequest,
-    ) -> Result<TerminalReply> {
-        let tables = TerminalTables::open(&self.store)?;
-        tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
-            TerminalObservationSequence::new(sequence),
-            terminal.clone(),
-            operation,
-        ))?;
-        let event: TerminalReply = TerminalRejected {
-            terminal,
-            reason: TerminalRejectionReason::TransportFailed,
-        }
-        .into();
-        self.record_terminal_event(&tables, event.clone())?;
-        Ok(event)
-    }
-
     fn subscription_start(
         &mut self,
         sequence: u64,
@@ -641,6 +615,38 @@ impl TerminalSupervisor {
             terminal.into_terminal(),
             event,
         ))
+    }
+
+    fn event_for_owner_request(&mut self, request: OwnerTerminalRequest) -> OwnerTerminalReply {
+        let terminal = match &request {
+            OwnerTerminalRequest::CreateSession(payload) => payload.name.clone(),
+            OwnerTerminalRequest::RetireSession(payload) => payload.name.clone(),
+        };
+        OwnerTerminalRequestUnimplemented {
+            terminal,
+            operation: request.operation_kind(),
+            reason: OwnerTerminalUnimplementedReason::NotBuiltYet,
+        }
+        .into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
+pub struct TerminalSupervisorOwnerReply {
+    reply: OwnerTerminalReply,
+}
+
+impl TerminalSupervisorOwnerReply {
+    pub const fn new(reply: OwnerTerminalReply) -> Self {
+        Self { reply }
+    }
+
+    pub fn into_reply(self) -> OwnerTerminalReply {
+        self.reply
+    }
+
+    pub const fn reply(&self) -> &OwnerTerminalReply {
+        &self.reply
     }
 }
 
@@ -705,6 +711,31 @@ impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
         self.last_operation = Some(message.request.operation_kind());
         self.served_request_count = sequence;
         self.event_for_request(sequence, message.request)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TerminalSupervisorOwnerRequest {
+    request: OwnerTerminalRequest,
+}
+
+impl TerminalSupervisorOwnerRequest {
+    pub fn new(request: OwnerTerminalRequest) -> Self {
+        Self { request }
+    }
+}
+
+impl Message<TerminalSupervisorOwnerRequest> for TerminalSupervisor {
+    type Reply = TerminalSupervisorOwnerReply;
+
+    async fn handle(
+        &mut self,
+        message: TerminalSupervisorOwnerRequest,
+        _context: &mut Context<Self, Self::Reply>,
+    ) -> Self::Reply {
+        self.served_owner_request_count = self.served_owner_request_count.saturating_add(1);
+        self.last_owner_operation = Some(message.request.operation_kind());
+        TerminalSupervisorOwnerReply::new(self.event_for_owner_request(message.request))
     }
 }
 
@@ -808,8 +839,6 @@ impl TerminalRequestTerminal {
             TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
             TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
             TerminalRequest::TerminalWorkerLifecycleRetraction(payload) => payload.terminal.clone(),
-            TerminalRequest::CreateSession(payload) => payload.name.clone(),
-            TerminalRequest::RetireSession(payload) => payload.name.clone(),
             TerminalRequest::ResolveSession(payload) => payload.name.clone(),
             TerminalRequest::ListSessions(_) => {
                 return Err(Error::InvalidArgument {
@@ -841,8 +870,6 @@ impl TerminalRequestTerminal {
             TerminalReply::InjectionRejected(payload) => payload.terminal.clone(),
             TerminalReply::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
             TerminalReply::SubscriptionRetracted(payload) => payload.token.terminal.clone(),
-            TerminalReply::SessionCreated(payload) => payload.name.clone(),
-            TerminalReply::SessionRetired(payload) => payload.name.clone(),
             TerminalReply::SessionResolved(payload) => payload.name.clone(),
             TerminalReply::SessionList(_) => return None,
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
