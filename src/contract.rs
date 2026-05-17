@@ -8,7 +8,7 @@ use signal_persona_terminal::{
     UnregisterPromptPattern, WriteInjection,
 };
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::pty::TerminalSocket;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,6 +106,14 @@ impl TerminalTransportBinding {
                     token.terminal.clone(),
                     TerminalRequest::TerminalWorkerLifecycleRetraction(token),
                 ),
+            TerminalRequest::CreateSession(_)
+            | TerminalRequest::RetireSession(_)
+            | TerminalRequest::ListSessions(_)
+            | TerminalRequest::ResolveSession(_) => Err(Error::InvalidArgument {
+                detail:
+                    "session registry requests belong to the consolidated persona-terminal daemon"
+                        .to_string(),
+            }),
         }
     }
 

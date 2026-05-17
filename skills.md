@@ -1,39 +1,35 @@
 # persona-terminal skill
 
-Work here when the change concerns the Persona control plane for terminals:
-typed Signal control over `terminal-cell` `control.sock`, the named-session
-registry in component Sema, the supervisor frontend, prompt-pattern lifecycle,
-and viewer-adapter launch policy.
+Work here when the change concerns the Persona terminal component:
+typed Signal communication over the component communication socket, the
+named-session registry in component Sema, the consolidated daemon,
+prompt-pattern lifecycle, and viewer-adapter launch policy.
 
-## Two-plane discipline
+## Communication/data discipline
 
-- This repo owns the control plane only. Typed Signal flows
-  `persona-terminal` ↔ terminal-cell `control.sock`. Raw viewer bytes flow
-  viewer ↔ terminal-cell `data.sock` directly; `persona-terminal` is not on
-  that path.
+- This repo owns the component communication plane. Typed Signal flows over
+  `persona-terminal`'s communication socket; supervision uses a separate
+  supervision socket.
+- Raw viewer bytes flow viewer ↔ session data path directly. They do not
+  cross the component communication socket.
 - The Sema session registry records two typed fields per cell:
   `control_socket_path` for Signal control, `data_socket_path` for viewer
-  attach. The supervisor reads `control_socket_path` and forwards Signal
-  frames there; it does not open data sockets. Viewer adapters read
-  `data_socket_path` and connect directly.
-- `persona-terminal-daemon` binds both `--control-socket` and
-  `--data-socket`. Local viewer adapters and CLIs ride on the terminal-cell
-  client, which exposes `new(control, data)` for full clients and
-  `for_control_only(control)` for control-only clients.
+  attach while transitional standalone terminal-cell paths still exist.
+  Production component clients do not discover or dial those cell paths.
+- Local viewer adapters and CLIs may ride on the terminal-cell client, which
+  exposes `new(control, data)` for full clients and
+  `for_control_only(control)` for local control-only clients.
 
-## Daemon vs supervisor
+## Component daemon
 
-- `persona-terminal-daemon` is a PTY-owning daemon. It embeds the
-  `terminal_cell` library, hosts `TerminalSignalControl`, binds both
-  sockets, and on `--name` writes a `SessionRegistration` recording both
-  socket paths.
-- `persona-terminal-supervisor` is a registry frontend. It binds one
-  `signal-persona-terminal` socket, answers `SupervisionRequest` traffic,
-  resolves named terminals from Sema, and forwards Signal frames to the
-  resolved `control_socket_path`. It does not own a PTY and does not open
-  data sockets.
-- Both binaries apply `PERSONA_SOCKET_MODE` (mode 0600 default) to every
-  socket they bind.
+- `persona-terminal-daemon` is the production component daemon. It binds a
+  communication socket and a supervision socket, owns component Sema, and
+  owns terminal session actors built on the `terminal_cell` library.
+- `persona-terminal-supervisor` and the old one-PTY `persona-terminal-daemon`
+  behavior are transitional implementation steps. Keep their witnesses useful
+  while folding their behavior into the consolidated component daemon.
+- Every engine-bound socket applies `PERSONA_SOCKET_MODE` (mode 0600 default)
+  before accepting traffic.
 
 ## Registry and storage
 
@@ -62,7 +58,7 @@ and viewer-adapter launch policy.
 
 ## Subscriptions
 
-- Subscription close is a typed retract/close request on the control plane.
+- Subscription close is a typed retract/close request on the communication plane.
   The supervisor forwards the retract; the server emits a final
   acknowledgement event; the stream ends. Raw socket close is not semantic
   protocol.
@@ -72,5 +68,5 @@ and viewer-adapter launch policy.
 - Name repeatable stateful workflows under `scripts/` and expose them from
   `flake.nix`.
 - Keep session inspection CLIs read-only. Effect-bearing commands use the
-  daemon/socket path until the supervisor control socket owns the full
+  daemon/socket path until the component communication socket owns the full
   command surface.

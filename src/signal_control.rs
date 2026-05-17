@@ -130,6 +130,14 @@ impl TerminalSignalControl {
             terminal_signal::TerminalRequest::TerminalWorkerLifecycleRetraction(token) => {
                 Ok(self.close_worker_lifecycle_subscription(token))
             }
+            terminal_signal::TerminalRequest::CreateSession(_)
+            | terminal_signal::TerminalRequest::RetireSession(_)
+            | terminal_signal::TerminalRequest::ListSessions(_)
+            | terminal_signal::TerminalRequest::ResolveSession(_) => {
+                Err(TerminalSignalControlFailure::new(
+                    "session registry requests belong to the consolidated persona-terminal daemon",
+                ))
+            }
         }
     }
 

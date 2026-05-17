@@ -11,11 +11,11 @@ use signal_core::{
     SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
 use signal_persona_terminal::{
-    SubscribeTerminalWorkerLifecycle, TerminalDaemonConfiguration,
-    TerminalDeliveryAttemptObservation, TerminalEvent, TerminalEventObservation, TerminalFrame,
-    TerminalFrameBody as FrameBody, TerminalName, TerminalObservationSequence,
-    TerminalOperationKind, TerminalRejected, TerminalRejectionReason, TerminalReply,
-    TerminalRequest,
+    ResolveSession, SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
+    TerminalDaemonConfiguration, TerminalDeliveryAttemptObservation, TerminalEvent,
+    TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
+    TerminalObservationSequence, TerminalOperationKind, TerminalRejected, TerminalRejectionReason,
+    TerminalReply, TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
@@ -492,7 +492,35 @@ impl TerminalSupervisor {
         sequence: u64,
         request: TerminalRequest,
     ) -> Result<TerminalReply> {
-        let terminal = TerminalRequestTerminal::from_request(&request).into_terminal();
+        match request {
+            TerminalRequest::ListSessions(list) => return self.list_sessions(list),
+            TerminalRequest::ResolveSession(resolve) => return self.resolve_session(resolve),
+            TerminalRequest::CreateSession(create) => {
+                return self.reject_session_mutation(
+                    sequence,
+                    create.name.clone(),
+                    TerminalOperationKind::CreateSession,
+                    TerminalRequest::CreateSession(create),
+                );
+            }
+            TerminalRequest::RetireSession(retire) => {
+                return self.reject_session_mutation(
+                    sequence,
+                    retire.name.clone(),
+                    TerminalOperationKind::RetireSession,
+                    TerminalRequest::RetireSession(retire),
+                );
+            }
+            other => self.forward_terminal_request(sequence, other),
+        }
+    }
+
+    fn forward_terminal_request(
+        &mut self,
+        sequence: u64,
+        request: TerminalRequest,
+    ) -> Result<TerminalReply> {
+        let terminal = TerminalRequestTerminal::from_request(&request)?.into_terminal();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
             TerminalObservationSequence::new(sequence),
@@ -513,6 +541,59 @@ impl TerminalSupervisor {
             session.control_socket_path().as_str(),
         );
         let event = binding.handle_request(request)?;
+        self.record_terminal_event(&tables, event.clone())?;
+        Ok(event)
+    }
+
+    fn list_sessions(&self, _list: signal_persona_terminal::ListSessions) -> Result<TerminalReply> {
+        let tables = TerminalTables::open(&self.store)?;
+        let entries = tables
+            .sessions()?
+            .into_iter()
+            .map(|session| SessionEntry {
+                name: session.terminal().clone(),
+                data_socket_path: signal_persona::WirePath::new(
+                    session.data_socket_path().as_str(),
+                ),
+            })
+            .collect();
+        Ok(SessionList { entries }.into())
+    }
+
+    fn resolve_session(&self, resolve: ResolveSession) -> Result<TerminalReply> {
+        let tables = TerminalTables::open(&self.store)?;
+        let Some(session) = tables.session(&resolve.name)? else {
+            return Ok(TerminalRejected {
+                terminal: resolve.name,
+                reason: TerminalRejectionReason::NotConnected,
+            }
+            .into());
+        };
+        Ok(SessionResolved {
+            name: session.terminal().clone(),
+            data_socket_path: signal_persona::WirePath::new(session.data_socket_path().as_str()),
+        }
+        .into())
+    }
+
+    fn reject_session_mutation(
+        &mut self,
+        sequence: u64,
+        terminal: TerminalName,
+        operation: TerminalOperationKind,
+        _request: TerminalRequest,
+    ) -> Result<TerminalReply> {
+        let tables = TerminalTables::open(&self.store)?;
+        tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
+            TerminalObservationSequence::new(sequence),
+            terminal.clone(),
+            operation,
+        ))?;
+        let event: TerminalReply = TerminalRejected {
+            terminal,
+            reason: TerminalRejectionReason::TransportFailed,
+        }
+        .into();
         self.record_terminal_event(&tables, event.clone())?;
         Ok(event)
     }
@@ -552,9 +633,12 @@ impl TerminalSupervisor {
         event: TerminalReply,
     ) -> Result<()> {
         self.recorded_event_count = self.recorded_event_count.saturating_add(1);
+        let Some(terminal) = TerminalRequestTerminal::from_event(&event) else {
+            return Ok(());
+        };
         tables.put_terminal_event(&TerminalEventObservation::new(
             TerminalObservationSequence::new(self.recorded_event_count),
-            TerminalRequestTerminal::from_event(&event).into_terminal(),
+            terminal.into_terminal(),
             event,
         ))
     }
@@ -709,7 +793,7 @@ struct TerminalRequestTerminal {
 }
 
 impl TerminalRequestTerminal {
-    fn from_request(request: &TerminalRequest) -> Self {
+    fn from_request(request: &TerminalRequest) -> Result<Self> {
         let terminal = match request {
             TerminalRequest::TerminalConnection(payload) => payload.terminal.clone(),
             TerminalRequest::TerminalInput(payload) => payload.terminal.clone(),
@@ -724,11 +808,20 @@ impl TerminalRequestTerminal {
             TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
             TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
             TerminalRequest::TerminalWorkerLifecycleRetraction(payload) => payload.terminal.clone(),
+            TerminalRequest::CreateSession(payload) => payload.name.clone(),
+            TerminalRequest::RetireSession(payload) => payload.name.clone(),
+            TerminalRequest::ResolveSession(payload) => payload.name.clone(),
+            TerminalRequest::ListSessions(_) => {
+                return Err(Error::InvalidArgument {
+                    detail: "ListSessions is a registry query and has no terminal identity"
+                        .to_string(),
+                });
+            }
         };
-        Self { terminal }
+        Ok(Self { terminal })
     }
 
-    fn from_event(event: &TerminalReply) -> Self {
+    fn from_event(event: &TerminalReply) -> Option<Self> {
         let terminal = match event {
             TerminalReply::TerminalReady(payload) => payload.terminal.clone(),
             TerminalReply::TerminalInputAccepted(payload) => payload.terminal.clone(),
@@ -748,11 +841,15 @@ impl TerminalRequestTerminal {
             TerminalReply::InjectionRejected(payload) => payload.terminal.clone(),
             TerminalReply::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
             TerminalReply::SubscriptionRetracted(payload) => payload.token.terminal.clone(),
+            TerminalReply::SessionCreated(payload) => payload.name.clone(),
+            TerminalReply::SessionRetired(payload) => payload.name.clone(),
+            TerminalReply::SessionResolved(payload) => payload.name.clone(),
+            TerminalReply::SessionList(_) => return None,
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
             // (the streaming-event payload); routed via
             // StreamingFrameBody::SubscriptionEvent, not Reply.
         };
-        Self { terminal }
+        Some(Self { terminal })
     }
 
     fn into_terminal(self) -> TerminalName {

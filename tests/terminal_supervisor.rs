@@ -21,14 +21,15 @@ use signal_core::{
 use signal_persona::{
     ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
     ComponentReadinessQuery, SupervisionFrame, SupervisionFrameBody, SupervisionProtocolVersion,
-    SupervisionReply, SupervisionRequest,
+    SupervisionReply, SupervisionRequest, WirePath,
 };
 use signal_persona_terminal::{
-    PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
-    RegisterPromptPattern, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
-    TerminalEvent, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName, TerminalReply,
-    TerminalWorkerKind, TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent,
-    TerminalWorkerLifecycleSnapshot, TerminalWorkerStopReason,
+    ListSessions, PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
+    RegisterPromptPattern, ResolveSession, SessionEntry, SessionList, SessionResolved,
+    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState, TerminalEvent, TerminalFrame,
+    TerminalFrameBody as FrameBody, TerminalName, TerminalReply, TerminalWorkerKind,
+    TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
+    TerminalWorkerStopReason,
 };
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
@@ -278,6 +279,117 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
         })
     );
     cell.join().expect("fake cell joins");
+}
+
+#[test]
+fn terminal_supervisor_resolves_session_without_contacting_cell() {
+    let fixture = SupervisorFixture::new("resolve-session");
+    let terminal = TerminalName::new("operator");
+    SessionRegistration::ready(
+        fixture.store(),
+        terminal.clone(),
+        fixture.cell_socket(),
+        fixture.cell_data_socket(),
+    )
+    .record()
+    .expect("session registration is written");
+
+    let supervisor = TerminalSupervisorDaemon::from_socket(fixture.supervisor_socket())
+        .with_store(fixture.store())
+        .bind()
+        .expect("supervisor binds before client connects");
+    let supervisor_socket = supervisor.socket().clone();
+    let served = thread::spawn(move || {
+        supervisor
+            .serve_one()
+            .expect("supervisor handles resolve request")
+    });
+
+    let mut stream =
+        UnixStream::connect(supervisor_socket).expect("client connects to supervisor socket");
+    let codec = TerminalSupervisorFrameCodec::default();
+    codec
+        .write_request(
+            &mut stream,
+            ResolveSession {
+                name: terminal.clone(),
+            }
+            .into(),
+        )
+        .expect("client writes supervisor request");
+    let event = codec
+        .read_event(&mut stream)
+        .expect("client reads supervisor event");
+    let expected = TerminalReply::from(SessionResolved {
+        name: terminal,
+        data_socket_path: WirePath::new(fixture.cell_data_socket().display().to_string()),
+    });
+
+    assert_eq!(event, expected);
+    assert_eq!(served.join().expect("supervisor server joins"), expected);
+}
+
+#[test]
+fn terminal_supervisor_lists_sessions_without_contacting_cells() {
+    let fixture = SupervisorFixture::new("list-sessions");
+    let operator = TerminalName::new("operator");
+    let designer = TerminalName::new("designer");
+    let operator_data_socket = fixture.root.join("operator.data.sock");
+    let designer_data_socket = fixture.root.join("designer.data.sock");
+    SessionRegistration::ready(
+        fixture.store(),
+        operator.clone(),
+        fixture.root.join("operator.control.sock"),
+        operator_data_socket.clone(),
+    )
+    .record()
+    .expect("operator session registration is written");
+    SessionRegistration::ready(
+        fixture.store(),
+        designer.clone(),
+        fixture.root.join("designer.control.sock"),
+        designer_data_socket.clone(),
+    )
+    .record()
+    .expect("designer session registration is written");
+
+    let supervisor = TerminalSupervisorDaemon::from_socket(fixture.supervisor_socket())
+        .with_store(fixture.store())
+        .bind()
+        .expect("supervisor binds before client connects");
+    let supervisor_socket = supervisor.socket().clone();
+    let served = thread::spawn(move || {
+        supervisor
+            .serve_one()
+            .expect("supervisor handles list request")
+    });
+
+    let mut stream =
+        UnixStream::connect(supervisor_socket).expect("client connects to supervisor socket");
+    let codec = TerminalSupervisorFrameCodec::default();
+    codec
+        .write_request(&mut stream, ListSessions {}.into())
+        .expect("client writes supervisor request");
+    let event = codec
+        .read_event(&mut stream)
+        .expect("client reads supervisor event");
+    let TerminalReply::SessionList(SessionList { mut entries }) = event.clone() else {
+        panic!("expected session list reply, got {event:?}");
+    };
+    entries.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+    let expected_entries = vec![
+        SessionEntry {
+            name: designer,
+            data_socket_path: WirePath::new(designer_data_socket.display().to_string()),
+        },
+        SessionEntry {
+            name: operator,
+            data_socket_path: WirePath::new(operator_data_socket.display().to_string()),
+        },
+    ];
+
+    assert_eq!(entries, expected_entries);
+    assert_eq!(served.join().expect("supervisor server joins"), event);
 }
 
 #[test]
