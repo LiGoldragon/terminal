@@ -130,13 +130,8 @@ impl TerminalCellDaemon {
             signal_control,
             runtime.clone(),
         );
-        let data_loop = TerminalDataPlaneLoop::new(
-            data_listener,
-            terminal,
-            input_port,
-            output_port,
-            runtime,
-        );
+        let data_loop =
+            TerminalDataPlaneLoop::new(data_listener, terminal, input_port, output_port, runtime);
 
         let control_task = tokio::task::spawn_blocking(move || control_loop.run());
         let data_task = tokio::task::spawn_blocking(move || data_loop.run());
@@ -775,8 +770,13 @@ impl ViewerRequest {
     }
 
     pub fn run(self) -> Result<()> {
-        TerminalViewer::new(self.control_socket, self.data_socket, self.mode, self.ready_file)
-            .run()
+        TerminalViewer::new(
+            self.control_socket,
+            self.data_socket,
+            self.mode,
+            self.ready_file,
+        )
+        .run()
     }
 }
 

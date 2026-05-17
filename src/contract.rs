@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use signal_persona_terminal::{
     AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
-    TerminalCaptured, TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput,
-    TerminalInputAccepted, TerminalName, TerminalReady, TerminalRejected, TerminalRejectionReason,
-    TerminalReply, TerminalRequest, TerminalResize, TerminalResized, TerminalSequence,
-    TerminalTranscriptBytes, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
+    TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput, TerminalName,
+    TerminalReady, TerminalRejected, TerminalRejectionReason, TerminalReply, TerminalRequest,
+    TerminalResize, TerminalSequence, TerminalTranscriptBytes, TranscriptDelta,
+    UnregisterPromptPattern, WriteInjection,
 };
 
 use crate::error::Result;
@@ -117,52 +117,24 @@ impl TerminalTransportBinding {
     }
 
     fn handle_input(&self, input: TerminalInput) -> Result<TerminalReply> {
-        if !self.contains_terminal(&input.terminal) {
-            return Ok(Self::rejected(
-                input.terminal,
-                TerminalRejectionReason::NotConnected,
-            ));
-        }
-        self.socket().send_bytes(input.bytes.as_slice())?;
-        Ok(TerminalInputAccepted {
-            terminal: input.terminal,
-            generation: self.generation,
-        }
-        .into())
+        self.handle_signal_control(
+            input.terminal.clone(),
+            TerminalRequest::TerminalInput(input),
+        )
     }
 
     fn handle_resize(&self, resize: TerminalResize) -> Result<TerminalReply> {
-        if !self.contains_terminal(&resize.terminal) {
-            return Ok(Self::rejected(
-                resize.terminal,
-                TerminalRejectionReason::NotConnected,
-            ));
-        }
-        self.socket()
-            .resize(resize.rows.into_u16(), resize.columns.into_u16())?;
-        Ok(TerminalResized {
-            terminal: resize.terminal,
-            rows: resize.rows,
-            columns: resize.columns,
-            generation: self.generation,
-        }
-        .into())
+        self.handle_signal_control(
+            resize.terminal.clone(),
+            TerminalRequest::TerminalResize(resize),
+        )
     }
 
     fn handle_capture(&self, capture: TerminalCapture) -> Result<TerminalReply> {
-        if !self.contains_terminal(&capture.terminal) {
-            return Ok(Self::rejected(
-                capture.terminal,
-                TerminalRejectionReason::NotConnected,
-            ));
-        }
-        let snapshot = self.socket().capture()?;
-        Ok(TerminalCaptured {
-            terminal: capture.terminal,
-            generation: self.generation,
-            bytes: TerminalTranscriptBytes::new(snapshot.as_bytes().to_vec()),
-        }
-        .into())
+        self.handle_signal_control(
+            capture.terminal.clone(),
+            TerminalRequest::TerminalCapture(capture),
+        )
     }
 
     fn handle_register_prompt_pattern(

@@ -137,10 +137,7 @@ impl SessionRegistration {
         control_socket_path: impl Into<PathBuf>,
         data_socket_path: impl Into<PathBuf>,
     ) -> Self {
-        let control_socket_path = control_socket_path
-            .into()
-            .to_string_lossy()
-            .into_owned();
+        let control_socket_path = control_socket_path.into().to_string_lossy().into_owned();
         let data_socket_path = data_socket_path.into().to_string_lossy().into_owned();
         Self {
             store,

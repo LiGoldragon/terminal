@@ -260,17 +260,14 @@ impl TerminalSignalArguments {
                     operation = Some(TerminalSignalOperation::WorkerLifecycleSnapshot);
                     break;
                 }
-                value if control_socket.is_none() => {
-                    control_socket = Some(PathBuf::from(value))
-                }
+                value if control_socket.is_none() => control_socket = Some(PathBuf::from(value)),
                 value if terminal.is_none() => terminal = Some(TerminalName::new(value)),
                 _ => {}
             }
         }
 
         Ok(Self {
-            control_socket: control_socket
-                .unwrap_or_else(|| PathBuf::from(DEFAULT_CONTROL_SOCKET)),
+            control_socket: control_socket.unwrap_or_else(|| PathBuf::from(DEFAULT_CONTROL_SOCKET)),
             terminal: terminal.unwrap_or_else(|| TerminalName::new(DEFAULT_TERMINAL)),
             operation: operation.unwrap_or(TerminalSignalOperation::Connect),
         })
@@ -539,12 +536,11 @@ impl TerminalEventLine {
             )?,
             TerminalReply::SubscriptionRetracted(SubscriptionRetracted { token }) => {
                 writeln!(output, "SubscriptionRetracted\t{}", token.terminal.as_str())?
-            }
-            // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
-            // belongs to the streaming TerminalEvent enum — it arrives
-            // via StreamingFrameBody::SubscriptionEvent, not as a
-            // reply. The CLI's reply-reading path no longer receives
-            // it; a separate subscription-event reader handles those.
+            } // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
+              // belongs to the streaming TerminalEvent enum — it arrives
+              // via StreamingFrameBody::SubscriptionEvent, not as a
+              // reply. The CLI's reply-reading path no longer receives
+              // it; a separate subscription-event reader handles those.
         }
         Ok(())
     }
