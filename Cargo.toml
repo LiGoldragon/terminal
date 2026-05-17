@@ -44,6 +44,10 @@ name = "persona-terminal-signal"
 path = "src/bin/persona-terminal-signal.rs"
 
 [[bin]]
+name = "persona-terminal-validate-capture"
+path = "src/bin/persona-terminal-validate-capture.rs"
+
+[[bin]]
 name = "persona-terminal-supervisor"
 path = "src/bin/persona-terminal-supervisor.rs"
 

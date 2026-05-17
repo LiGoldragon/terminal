@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use persona_terminal::capture_validator::CaptureValidatorCommandLine;
 use persona_terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
 use persona_terminal::supervisor::TerminalSupervisorFrameCodec;
 use signal_persona_terminal::{TerminalConnection, TerminalName, TerminalReady, TerminalReply};
@@ -39,6 +40,28 @@ impl Drop for SignalFixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
     }
+}
+
+#[test]
+fn terminal_capture_validator_decodes_terminal_captured_tsv() {
+    let fixture = SignalFixture::new("capture-validator");
+    let capture_path = fixture.root.join("capture.tsv");
+    fs::write(
+        &capture_path,
+        "TerminalCaptured\tresponder\t1\t6669787475726520726573706f6e6465722074657874\n",
+    )
+    .expect("capture fixture writes");
+
+    CaptureValidatorCommandLine::from_arguments([
+        "--file",
+        capture_path.to_str().expect("path is utf8"),
+        "--terminal",
+        "responder",
+        "--contains-text",
+        "responder text",
+    ])
+    .run()
+    .expect("validator decodes terminal capture bytes");
 }
 
 #[test]

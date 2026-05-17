@@ -22,6 +22,9 @@ pub enum Error {
     #[error("invalid argument: {detail}")]
     InvalidArgument { detail: String },
 
+    #[error("artifact validation failed: {detail}")]
+    ArtifactValidation { detail: String },
+
     #[error("{component} socket path is missing")]
     MissingSocket { component: &'static str },
 

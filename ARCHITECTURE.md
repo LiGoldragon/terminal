@@ -438,12 +438,14 @@ src/signal_control.rs              Kameo actor for prompt/gate/injection control
 src/supervisor.rs                  engine-facing Signal supervisor socket
 src/tables.rs                      component Sema tables over signal-persona-terminal introspection records
 src/registry.rs                    session registration + inspection clients
+src/capture_validator.rs           structured validator for signal-capture TSV artifacts
 src/bin/persona-terminal-daemon.rs  daemon entry
 src/bin/persona-terminal-view.rs    viewer entry
 src/bin/persona-terminal-send.rs    raw input sender
 src/bin/persona-terminal-sessions.rs read-only session inspection
 src/bin/persona-terminal-resolve.rs  read-only session name resolver
 src/bin/persona-terminal-signal.rs   signal terminal request client
+src/bin/persona-terminal-validate-capture.rs test/debug capture artifact validator
 src/bin/persona-terminal-supervisor.rs supervisor socket entry
 scripts/named-session-registry-witness stateful named-session witness
 scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness

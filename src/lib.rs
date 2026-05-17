@@ -1,3 +1,4 @@
+pub mod capture_validator;
 pub mod contract;
 pub mod error;
 pub mod pty;
