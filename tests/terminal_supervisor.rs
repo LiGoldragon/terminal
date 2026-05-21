@@ -24,10 +24,17 @@ use signal_core::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Operation, Request,
     RequestRejectionReason, SessionEpoch, SignalVerb,
 };
+use signal_frame::{
+    ExchangeIdentifier as FrameExchangeIdentifier, ExchangeLane as FrameExchangeLane,
+    LaneSequence as FrameLaneSequence, Request as FrameRequest, SessionEpoch as FrameSessionEpoch,
+};
+use signal_persona::engine_management::{
+    Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
+    Query as SupervisionQuery, Reply as SupervisionReply,
+};
 use signal_persona::{
-    ComponentHealth, ComponentHealthQuery, ComponentHello, ComponentKind, ComponentName,
-    ComponentReadinessQuery, SupervisionFrame, SupervisionFrameBody, SupervisionProtocolVersion,
-    SupervisionReply, SupervisionRequest, WirePath,
+    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion, Presence,
+    WirePath,
 };
 use signal_persona_terminal::{
     ListSessions, PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
@@ -518,39 +525,39 @@ fn terminal_supervisor_answers_component_supervision_relation() {
 
     write_supervision_request(
         &mut stream,
-        SupervisionRequest::ComponentHello(ComponentHello {
+        SupervisionRequest::Announce(Presence {
             expected_component: ComponentName::new("persona-terminal"),
             expected_kind: ComponentKind::Terminal,
-            supervision_protocol_version: SupervisionProtocolVersion::new(1),
+            engine_management_protocol_version: EngineManagementProtocolVersion::new(1),
         }),
     );
     assert!(matches!(
         codec.read_reply(&mut stream).expect("identity reply"),
-        SupervisionReply::ComponentIdentity(identity)
+        SupervisionReply::Identified(identity)
             if identity.name.as_str() == "persona-terminal"
                 && identity.kind == ComponentKind::Terminal
     ));
 
     write_supervision_request(
         &mut stream,
-        SupervisionRequest::ComponentReadinessQuery(ComponentReadinessQuery {
-            component: ComponentName::new("persona-terminal"),
-        }),
+        SupervisionRequest::Query(SupervisionQuery::ReadinessStatus(ComponentName::new(
+            "persona-terminal",
+        ))),
     );
     assert!(matches!(
         codec.read_reply(&mut stream).expect("readiness reply"),
-        SupervisionReply::ComponentReady(_)
+        SupervisionReply::Ready(_)
     ));
 
     write_supervision_request(
         &mut stream,
-        SupervisionRequest::ComponentHealthQuery(ComponentHealthQuery {
-            component: ComponentName::new("persona-terminal"),
-        }),
+        SupervisionRequest::Query(SupervisionQuery::HealthStatus(ComponentName::new(
+            "persona-terminal",
+        ))),
     );
     assert!(matches!(
         codec.read_reply(&mut stream).expect("health reply"),
-        SupervisionReply::ComponentHealthReport(report)
+        SupervisionReply::HealthReport(report)
             if report.health == ComponentHealth::Running
     ));
 
@@ -685,8 +692,8 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
 
 fn write_supervision_request(stream: &mut UnixStream, request: SupervisionRequest) {
     let frame = SupervisionFrame::new(SupervisionFrameBody::Request {
-        exchange: test_exchange(),
-        request: Request::from_payload(request),
+        exchange: test_supervision_exchange(),
+        request: FrameRequest::from_payload(request),
     });
     let bytes = frame
         .encode_length_prefixed()
@@ -702,6 +709,14 @@ fn test_exchange() -> ExchangeIdentifier {
         SessionEpoch::new(0),
         ExchangeLane::Connector,
         LaneSequence::first(),
+    )
+}
+
+fn test_supervision_exchange() -> FrameExchangeIdentifier {
+    FrameExchangeIdentifier::new(
+        FrameSessionEpoch::new(0),
+        FrameExchangeLane::Connector,
+        FrameLaneSequence::first(),
     )
 }
 
