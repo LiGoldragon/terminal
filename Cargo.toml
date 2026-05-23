@@ -64,7 +64,7 @@ signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch
 signal-hook  = "0.3"
 owner-signal-persona-terminal = { git = "https://github.com/LiGoldragon/owner-signal-persona-terminal.git", branch = "main" }
 signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
-signal-persona-auth = { git = "https://github.com/LiGoldragon/signal-persona-auth.git" }
+signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-origin.git" }
 signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"

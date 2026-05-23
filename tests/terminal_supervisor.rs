@@ -467,7 +467,7 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 fn terminal_supervisor_answers_component_supervision_relation() {
     use nota_codec::{Encoder, NotaEncode};
     use signal_persona::{SocketMode as WireSocketMode, WirePath};
-    use signal_persona_auth::{OwnerIdentity, UnixUserId};
+    use signal_persona_origin::{OwnerIdentity, UnixUserId};
     use signal_persona_terminal::TerminalDaemonConfiguration;
 
     let fixture = SupervisorFixture::new("supervision");
