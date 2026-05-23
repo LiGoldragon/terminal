@@ -37,10 +37,10 @@ use signal_persona::{
     WirePath,
 };
 use signal_persona_terminal::{
-    ListSessions, PromptPattern, PromptPatternBytes, PromptPatternId, PromptPatternRegistered,
-    RegisterPromptPattern, ResolveSession, SessionEntry, SessionList, SessionResolved,
-    SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState, TerminalEvent, TerminalFrame,
-    TerminalFrameBody as FrameBody, TerminalName, TerminalReply, TerminalWorkerKind,
+    ListSessions, PromptPattern, PromptPatternBytes, PromptPatternIdentifier,
+    PromptPatternRegistered, RegisterPromptPattern, ResolveSession, SessionEntry, SessionList,
+    SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState, TerminalEvent,
+    TerminalFrame, TerminalFrameBody as FrameBody, TerminalName, TerminalReply, TerminalWorkerKind,
     TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
     TerminalWorkerStopReason,
 };
@@ -223,7 +223,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
                     stream,
                     TerminalReply::from(PromptPatternRegistered {
                         terminal,
-                        pattern_id: PromptPatternId::new("from-cell"),
+                        pattern_id: PromptPatternIdentifier::new("from-cell"),
                     }),
                 )
                 .expect("fake cell writes terminal signal event");
@@ -262,14 +262,14 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
         event,
         TerminalReply::from(PromptPatternRegistered {
             terminal,
-            pattern_id: PromptPatternId::new("from-cell"),
+            pattern_id: PromptPatternIdentifier::new("from-cell"),
         })
     );
     assert_eq!(
         served.join().expect("supervisor server joins"),
         TerminalReply::from(PromptPatternRegistered {
             terminal: TerminalName::new("operator"),
-            pattern_id: PromptPatternId::new("from-cell"),
+            pattern_id: PromptPatternIdentifier::new("from-cell"),
         })
     );
     let tables = TerminalTables::open(&fixture.store()).expect("terminal tables open");
@@ -288,7 +288,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
         events[0].event(),
         &TerminalReply::from(PromptPatternRegistered {
             terminal: TerminalName::new("operator"),
-            pattern_id: PromptPatternId::new("from-cell"),
+            pattern_id: PromptPatternIdentifier::new("from-cell"),
         })
     );
     cell.join().expect("fake cell joins");
@@ -467,7 +467,7 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 fn terminal_supervisor_answers_component_supervision_relation() {
     use nota_codec::{Encoder, NotaEncode};
     use signal_persona::{SocketMode as WireSocketMode, WirePath};
-    use signal_persona_origin::{OwnerIdentity, UnixUserId};
+    use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
     use signal_persona_terminal::TerminalDaemonConfiguration;
 
     let fixture = SupervisorFixture::new("supervision");
@@ -479,7 +479,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
         supervision_socket_path: WirePath::new(supervision_socket.display().to_string()),
         supervision_socket_mode: WireSocketMode::new(0o600),
         store_path: WirePath::new(fixture.store().as_path().display().to_string()),
-        owner_identity: OwnerIdentity::UnixUser(UnixUserId::new(1000)),
+        owner_identity: OwnerIdentity::UnixUser(UnixUserIdentifier::new(1000)),
     };
     let mut encoder = Encoder::new();
     configuration

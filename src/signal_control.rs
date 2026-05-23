@@ -191,8 +191,8 @@ impl TerminalSignalControl {
     fn register_prompt_pattern(
         &mut self,
         pattern: terminal_signal::PromptPattern,
-    ) -> terminal_signal::PromptPatternId {
-        let pattern_id = terminal_signal::PromptPatternId::new(format!(
+    ) -> terminal_signal::PromptPatternIdentifier {
+        let pattern_id = terminal_signal::PromptPatternIdentifier::new(format!(
             "prompt-pattern-{}",
             self.next_prompt_pattern
         ));
@@ -207,7 +207,7 @@ impl TerminalSignalControl {
             .iter()
             .map(
                 |(pattern_id, pattern)| terminal_signal::PromptPatternEntry {
-                    pattern_id: terminal_signal::PromptPatternId::new(pattern_id.clone()),
+                    pattern_id: terminal_signal::PromptPatternIdentifier::new(pattern_id.clone()),
                     pattern: pattern.clone(),
                 },
             )
@@ -219,7 +219,7 @@ impl TerminalSignalControl {
         acquire: terminal_signal::AcquireInputGate,
     ) -> Result<terminal_signal::TerminalReply, TerminalSignalControlFailure> {
         let prompt_state = self
-            .prompt_state(acquire.prompt_pattern_id.as_ref())
+            .prompt_state(acquire.prompt_pattern_identifier.as_ref())
             .await?;
         match self.input_port.close_human_input() {
             Ok(lease) => {
@@ -236,7 +236,7 @@ impl TerminalSignalControl {
             Err(TerminalCellError::InputGateAlreadyClosed(lease)) => {
                 Ok(terminal_signal::GateBusy {
                     terminal: acquire.terminal,
-                    current_holder: terminal_signal::InputGateLeaseId::new(
+                    current_holder: terminal_signal::InputGateLeaseIdentifier::new(
                         lease.sequence().into_u64(),
                     ),
                 }
@@ -323,7 +323,7 @@ impl TerminalSignalControl {
 
     async fn prompt_state(
         &self,
-        pattern_id: Option<&terminal_signal::PromptPatternId>,
+        pattern_id: Option<&terminal_signal::PromptPatternIdentifier>,
     ) -> Result<terminal_signal::PromptState, TerminalSignalControlFailure> {
         let Some(pattern_id) = pattern_id else {
             return Ok(terminal_signal::PromptState::NotChecked);
@@ -400,7 +400,7 @@ impl TerminalSignalControl {
 
     fn signal_lease(lease: TerminalInputGateLease) -> terminal_signal::InputGateLease {
         terminal_signal::InputGateLease {
-            id: terminal_signal::InputGateLeaseId::new(lease.sequence().into_u64()),
+            id: terminal_signal::InputGateLeaseIdentifier::new(lease.sequence().into_u64()),
         }
     }
 

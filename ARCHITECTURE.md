@@ -97,7 +97,7 @@ those sockets and actors are available.
 `PromptPattern` with the supervisor at session-create time via
 `signal-persona-terminal::RegisterPromptPattern`. The supervisor
 forwards the registration to the relevant terminal-cell `control.sock`; the cell
-returns a typed `PromptPatternId` which the supervisor stores keyed by
+returns a typed `PromptPatternIdentifier` which the supervisor stores keyed by
 harness identity. Later `AcquireInputGate { pattern_id }` requests reference
 that id.
 

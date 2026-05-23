@@ -8,7 +8,7 @@ use signal_core::{
 };
 use signal_persona_terminal::{
     AcquireInputGate, GateAcquired, GateBusy, GateReleased, InjectionAck, InjectionRejected,
-    InputGateLease, InputGateLeaseId, InputGateReason, ListPromptPatterns, PromptPattern,
+    InputGateLease, InputGateLeaseIdentifier, InputGateReason, ListPromptPatterns, PromptPattern,
     PromptPatternBytes, PromptPatternList, PromptPatternRegistered, PromptPatternUnregistered,
     PromptState, RegisterPromptPattern, ReleaseInputGate, SessionList, SessionResolved,
     SubscribeTerminalWorkerLifecycle, SubscriptionRetracted, TerminalCapture, TerminalCaptured,
@@ -126,27 +126,28 @@ impl TerminalSignalOperation {
             .into(),
             Self::UnregisterPrompt { pattern_id } => UnregisterPromptPattern {
                 terminal,
-                pattern_id: signal_persona_terminal::PromptPatternId::new(pattern_id),
+                pattern_id: signal_persona_terminal::PromptPatternIdentifier::new(pattern_id),
             }
             .into(),
             Self::ListPrompts => ListPromptPatterns { terminal }.into(),
             Self::AcquireGate { pattern_id } => AcquireInputGate {
                 terminal,
                 reason: InputGateReason::new("persona-terminal signal cli"),
-                prompt_pattern_id: pattern_id.map(signal_persona_terminal::PromptPatternId::new),
+                prompt_pattern_identifier: pattern_id
+                    .map(signal_persona_terminal::PromptPatternIdentifier::new),
             }
             .into(),
             Self::ReleaseGate { lease_id } => ReleaseInputGate {
                 terminal,
                 lease: InputGateLease {
-                    id: InputGateLeaseId::new(lease_id),
+                    id: InputGateLeaseIdentifier::new(lease_id),
                 },
             }
             .into(),
             Self::Inject { lease_id, bytes } => WriteInjection {
                 terminal,
                 lease: InputGateLease {
-                    id: InputGateLeaseId::new(lease_id),
+                    id: InputGateLeaseIdentifier::new(lease_id),
                 },
                 bytes: TerminalInputBytes::new(bytes),
             }
@@ -157,7 +158,7 @@ impl TerminalSignalOperation {
                 WriteInjection {
                     terminal,
                     lease: InputGateLease {
-                        id: InputGateLeaseId::new(lease_id),
+                        id: InputGateLeaseIdentifier::new(lease_id),
                     },
                     bytes: TerminalInputBytes::new(bytes),
                 }
