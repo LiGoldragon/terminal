@@ -1,55 +1,55 @@
 [package]
-name         = "persona-terminal"
+name         = "terminal"
 version      = "0.1.0"
 edition      = "2024"
 rust-version = "1.89"
 license      = "MIT OR Apache-2.0"
-repository   = "https://github.com/LiGoldragon/persona-terminal"
+repository   = "https://github.com/LiGoldragon/terminal"
 description  = "Persona terminal session owner built around terminal-cell."
 
 [lib]
-name = "persona_terminal"
+name = "terminal"
 path = "src/lib.rs"
 
 [[bin]]
-name = "persona-terminal-daemon"
-path = "src/bin/persona-terminal-daemon.rs"
+name = "terminal-daemon"
+path = "src/bin/terminal-daemon.rs"
 
 [[bin]]
-name = "persona-terminal-view"
-path = "src/bin/persona-terminal-view.rs"
+name = "terminal"
+path = "src/bin/terminal.rs"
 
 [[bin]]
-name = "persona-terminal-send"
-path = "src/bin/persona-terminal-send.rs"
+name = "terminal-send"
+path = "src/bin/terminal-send.rs"
 
 [[bin]]
-name = "persona-terminal-capture"
-path = "src/bin/persona-terminal-capture.rs"
+name = "terminal-capture"
+path = "src/bin/terminal-capture.rs"
 
 [[bin]]
-name = "persona-terminal-type"
-path = "src/bin/persona-terminal-type.rs"
+name = "terminal-type"
+path = "src/bin/terminal-type.rs"
 
 [[bin]]
-name = "persona-terminal-sessions"
-path = "src/bin/persona-terminal-sessions.rs"
+name = "terminal-sessions"
+path = "src/bin/terminal-sessions.rs"
 
 [[bin]]
-name = "persona-terminal-resolve"
-path = "src/bin/persona-terminal-resolve.rs"
+name = "terminal-resolve"
+path = "src/bin/terminal-resolve.rs"
 
 [[bin]]
-name = "persona-terminal-signal"
-path = "src/bin/persona-terminal-signal.rs"
+name = "terminal-signal"
+path = "src/bin/terminal-signal.rs"
 
 [[bin]]
-name = "persona-terminal-validate-capture"
-path = "src/bin/persona-terminal-validate-capture.rs"
+name = "terminal-validate-capture"
+path = "src/bin/terminal-validate-capture.rs"
 
 [[bin]]
-name = "persona-terminal-supervisor"
-path = "src/bin/persona-terminal-supervisor.rs"
+name = "terminal-supervisor"
+path = "src/bin/terminal-supervisor.rs"
 
 [dependencies]
 crossterm    = "0.28"
@@ -62,10 +62,10 @@ sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-core  = { git = "https://github.com/LiGoldragon/signal-core.git" }
 signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
 signal-hook  = "0.3"
-owner-signal-persona-terminal = { git = "https://github.com/LiGoldragon/owner-signal-persona-terminal.git", branch = "main" }
+owner-signal-terminal = { git = "https://github.com/LiGoldragon/owner-signal-terminal.git", branch = "main" }
 signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
 signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-origin.git" }
-signal-persona-terminal = { git = "https://github.com/LiGoldragon/signal-persona-terminal.git", branch = "main" }
+signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"
 tokio        = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }

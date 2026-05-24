@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
-use signal_persona_terminal::TerminalName;
+use signal_terminal::TerminalName;
 
 use crate::error::{Error, Result};
 

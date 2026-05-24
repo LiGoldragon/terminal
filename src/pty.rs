@@ -11,7 +11,7 @@ use kameo::actor::{ActorRef, Spawn};
 use signal_core::RequestPayload;
 use signal_hook::consts::signal::SIGWINCH;
 use signal_hook::iterator::Signals;
-use signal_persona_terminal as terminal_signal;
+use signal_terminal as terminal_signal;
 use terminal_cell::{
     InputSource, SignalSocketRequest, SocketReplyWriter, SocketRequest, SocketRequestReader,
     TerminalCell, TerminalCellError, TerminalCellSocketClient, TerminalCommand, TerminalInput,
@@ -29,8 +29,8 @@ use crate::signal_control::{TerminalSignalControl, TerminalSignalControlRequest}
 use crate::socket::SocketMode;
 use crate::tables::StoreLocation;
 
-const DEFAULT_CONTROL_SOCKET: &str = "/tmp/persona-terminal.control.sock";
-const DEFAULT_DATA_SOCKET: &str = "/tmp/persona-terminal.data.sock";
+const DEFAULT_CONTROL_SOCKET: &str = "/tmp/terminal.control.sock";
+const DEFAULT_DATA_SOCKET: &str = "/tmp/terminal.data.sock";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonRequest {
@@ -117,7 +117,7 @@ impl TerminalCellDaemon {
         let runtime = Handle::current();
 
         println!(
-            "persona-terminal-daemon control-socket={} data-socket={}",
+            "terminal-daemon control-socket={} data-socket={}",
             self.control_socket.display(),
             self.data_socket.display()
         );
@@ -152,7 +152,7 @@ struct DaemonArguments {
     data_socket: PathBuf,
     command: TerminalCommand,
     store: Option<StoreLocation>,
-    terminal: Option<signal_persona_terminal::TerminalName>,
+    terminal: Option<signal_terminal::TerminalName>,
 }
 
 impl DaemonArguments {
@@ -174,9 +174,9 @@ impl DaemonArguments {
                 "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--store" => store = arguments.next().map(StoreLocation::new),
                 "--name" | "--terminal" => {
-                    terminal = arguments.next().map(|value| {
-                        signal_persona_terminal::TerminalName::new(value.to_string_lossy())
-                    })
+                    terminal = arguments
+                        .next()
+                        .map(|value| signal_terminal::TerminalName::new(value.to_string_lossy()))
                 }
                 value => {
                     command.push(value.to_string());
@@ -305,7 +305,7 @@ impl TerminalControlPlaneLoop {
             let signal_control = self.signal_control.clone();
             let runtime = self.runtime.clone();
             thread::Builder::new()
-                .name("persona-terminal-control-connection".to_string())
+                .name("terminal-control-connection".to_string())
                 .spawn(move || {
                     if let Err(error) = TerminalControlConnection::new(
                         stream,
@@ -357,7 +357,7 @@ impl TerminalDataPlaneLoop {
             let output_port = self.output_port.clone();
             let runtime = self.runtime.clone();
             thread::Builder::new()
-                .name("persona-terminal-data-connection".to_string())
+                .name("terminal-data-connection".to_string())
                 .spawn(move || {
                     if let Err(error) = TerminalDataConnection::new(
                         stream,
@@ -428,7 +428,7 @@ impl TerminalControlConnection {
         )?;
         Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "attach request arrived on persona-terminal control socket",
+            "attach request arrived on terminal control socket",
         ))
     }
 
@@ -568,7 +568,7 @@ impl TerminalControlConnection {
             // belongs to the streaming TerminalEvent enum, not the
             // direct-reply TerminalReply enum. terminal-cell exposes
             // `write_signal_subscription_event` for this path; the
-            // persona-terminal supervisor is a passthrough so it
+            // terminal supervisor is a passthrough so it
             // wraps the same way.
             SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
                 terminal_signal::TerminalWorkerLifecycleEvent {
@@ -643,7 +643,7 @@ impl TerminalDataConnection {
         )?;
         Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "non-attach request arrived on persona-terminal data socket",
+            "non-attach request arrived on terminal data socket",
         ))
     }
 
@@ -828,7 +828,7 @@ impl TerminalViewer {
         self.readiness.confirm_control_plane(&self.client)?;
         self.readiness.announce()?;
         let output = thread::Builder::new()
-            .name("persona-terminal-view-output".to_string())
+            .name("terminal-view-output".to_string())
             .spawn(move || -> io::Result<()> {
                 let mut stdout = io::stdout();
                 let mut buffer = [0_u8; 8192];
@@ -877,7 +877,7 @@ impl TerminalResizeWatcher {
     fn spawn(mut self) -> io::Result<thread::JoinHandle<()>> {
         let mut signals = Signals::new([SIGWINCH])?;
         thread::Builder::new()
-            .name("persona-terminal-view-resize".to_string())
+            .name("terminal-view-resize".to_string())
             .spawn(move || {
                 for _signal in signals.forever() {
                     if self.resize_now().is_err() {
@@ -914,7 +914,7 @@ impl TerminalViewerReadiness {
 
     fn announce(&self) -> io::Result<()> {
         if let Some(path) = &self.ready_file {
-            fs::write(path, b"persona-terminal-view attached\n")?;
+            fs::write(path, b"terminal-view attached\n")?;
         }
         Ok(())
     }
@@ -963,7 +963,7 @@ pub struct CaptureRequest {
 
 /// Control-plane client around a single terminal cell. Every verb this
 /// type exposes is a control verb. Attach lives in `TerminalCellSocketClient`
-/// and the `terminal-cell-view` / `persona-terminal-view` binaries.
+/// and the `terminal-cell-view` / `terminal-view` binaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSocket {
     client: TerminalCellSocketClient,
@@ -1074,17 +1074,14 @@ enum CapturePresentation {
 
 impl CapturePresentation {
     fn from_environment() -> Self {
-        if !matches!(
-            env::var("PERSONA_TERMINAL_CAPTURE_MODE").as_deref(),
-            Ok("screen")
-        ) {
+        if !matches!(env::var("TERMINAL_CAPTURE_MODE").as_deref(), Ok("screen")) {
             return Self::Raw;
         }
-        let rows = env::var("PERSONA_TERMINAL_CAPTURE_ROWS")
+        let rows = env::var("TERMINAL_CAPTURE_ROWS")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(32);
-        let columns = env::var("PERSONA_TERMINAL_CAPTURE_COLUMNS")
+        let columns = env::var("TERMINAL_CAPTURE_COLUMNS")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(120);

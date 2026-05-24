@@ -4,10 +4,10 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_terminal::capture_validator::CaptureValidatorCommandLine;
-use persona_terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
-use persona_terminal::supervisor::TerminalSupervisorFrameCodec;
-use signal_persona_terminal::{TerminalConnection, TerminalName, TerminalReady, TerminalReply};
+use signal_terminal::{TerminalConnection, TerminalName, TerminalReady, TerminalReply};
+use terminal::capture_validator::CaptureValidatorCommandLine;
+use terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
+use terminal::supervisor::TerminalSupervisorFrameCodec;
 
 struct SignalFixture {
     root: PathBuf,
@@ -88,7 +88,7 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
                 stream,
                 TerminalReply::from(TerminalReady {
                     terminal: TerminalName::new("operator"),
-                    generation: signal_persona_terminal::TerminalGeneration::new(1),
+                    generation: signal_terminal::TerminalGeneration::new(1),
                 }),
             )
             .expect("server writes signal event");

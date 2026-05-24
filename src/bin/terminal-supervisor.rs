@@ -1,8 +1,8 @@
 use nota_config::ConfigurationSource;
-use persona_terminal::supervisor::{TerminalSupervisorCommandLine, TerminalSupervisorDaemon};
-use signal_persona_terminal::TerminalDaemonConfiguration;
+use signal_terminal::TerminalDaemonConfiguration;
+use terminal::supervisor::{TerminalSupervisorCommandLine, TerminalSupervisorDaemon};
 
-fn main() -> persona_terminal::Result<()> {
+fn main() -> terminal::Result<()> {
     // The supervised production launch passes a typed
     // `TerminalDaemonConfiguration` as argv[1]. The same binary also
     // serves the legacy `--socket --store` CLI surface; pick the

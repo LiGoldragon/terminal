@@ -1,11 +1,11 @@
-# Agent Instructions - Persona Terminal
+# Agent Instructions - Terminal
 
 You MUST read lore's `AGENTS.md` and the primary workspace
 orchestration protocol before editing this repository.
 
 ## Repo Role
 
-Persona Terminal owns the terminal-harness control layer for Persona. It
+Terminal owns the terminal-harness control layer for Persona. It
 contains the library and binaries that spawn durable terminal cells, attach
 visible viewers, send input frames, resize harnesses, and keep terminal output
 available for later capture. `terminal-cell` is the low-level PTY/transcript
@@ -16,7 +16,7 @@ primitive; this repo is the Persona-facing owner around it.
 This repo owns terminal transport, viewer attachment, and terminal session
 metadata. It does not own Persona message records, authorization, agent
 identity, harness quota interpretation, or the Persona state reducer.
-Terminal-brand mux helpers are retired; the owner noun is `persona-terminal`
+Terminal-brand mux helpers are retired; the owner noun is `terminal`
 around `terminal-cell`.
 
 ## Version Control

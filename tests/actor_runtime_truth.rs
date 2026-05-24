@@ -145,7 +145,7 @@ fn terminal_brand_mux_adapter_is_retired_not_reimplemented() {
 }
 
 #[test]
-fn persona_terminal_uses_terminal_cell_as_the_pty_cell_primitive() {
+fn terminal_uses_terminal_cell_as_the_pty_cell_primitive() {
     let manifest = SourceFile::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
     let pty_source = SourceFile::read(
         Path::new(env!("CARGO_MANIFEST_DIR"))

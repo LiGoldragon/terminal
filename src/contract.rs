@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use signal_persona_terminal::{
+use signal_terminal::{
     AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
     TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput, TerminalName,
     TerminalReady, TerminalRejected, TerminalRejectionReason, TerminalReply, TerminalRequest,
@@ -106,13 +106,12 @@ impl TerminalTransportBinding {
                     token.terminal.clone(),
                     TerminalRequest::TerminalWorkerLifecycleRetraction(token),
                 ),
-            TerminalRequest::ListSessions(_) | TerminalRequest::ResolveSession(_) => Err(
-                Error::InvalidArgument {
-                detail:
-                    "session registry queries belong to the consolidated persona-terminal daemon"
+            TerminalRequest::ListSessions(_) | TerminalRequest::ResolveSession(_) => {
+                Err(Error::InvalidArgument {
+                    detail: "session registry queries belong to the consolidated terminal daemon"
                         .to_string(),
-                },
-            ),
+                })
+            }
         }
     }
 

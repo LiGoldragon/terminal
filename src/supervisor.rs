@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use owner_signal_persona_terminal::{
+use owner_signal_terminal::{
     OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason,
 };
@@ -14,7 +14,7 @@ use signal_core::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
     SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
-use signal_persona_terminal::{
+use signal_terminal::{
     ResolveSession, SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
     TerminalDaemonConfiguration, TerminalDeliveryAttemptObservation, TerminalEvent,
     TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
@@ -103,10 +103,7 @@ impl TerminalSupervisorDaemon {
         let supervision = self.supervision.clone();
         let bound = self.bind()?;
         let _supervision = supervision.map(SupervisionListener::spawn).transpose()?;
-        eprintln!(
-            "persona-terminal-supervisor socket={}",
-            bound.socket.display()
-        );
+        eprintln!("terminal-supervisor socket={}", bound.socket.display());
         bound.serve_forever()
     }
 
@@ -541,7 +538,7 @@ impl TerminalSupervisor {
         Ok(event)
     }
 
-    fn list_sessions(&self, _list: signal_persona_terminal::ListSessions) -> Result<TerminalReply> {
+    fn list_sessions(&self, _list: signal_terminal::ListSessions) -> Result<TerminalReply> {
         let tables = TerminalTables::open(&self.store)?;
         let entries = tables
             .sessions()?
@@ -945,7 +942,7 @@ impl TerminalSupervisorArguments {
             .socket
             .or_else(|| std::env::var_os("PERSONA_SOCKET_PATH").map(PathBuf::from))
             .ok_or(Error::MissingSocket {
-                component: "persona-terminal-supervisor",
+                component: "terminal-supervisor",
             })?;
         Ok(TerminalSupervisorDaemon::from_socket(socket).with_store(self.store))
     }

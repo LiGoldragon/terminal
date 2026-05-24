@@ -1,25 +1,25 @@
-# persona-terminal — architecture
+# terminal — architecture
 
 *Persona-facing terminal session owner. One component daemon, one
 communication socket, one supervision socket, many internal terminal cells.*
 
-`persona-terminal` owns the Persona-facing surface around named terminal
+`terminal` owns the Persona-facing surface around named terminal
 sessions: typed Signal communication, component Sema registry, session
 metadata, viewer-adapter launch policy, and the internal terminal-cell actors
 that own child PTYs. The component boundary exposes a **communication socket**
-for `signal-persona-terminal` traffic and a **supervision socket** for engine
+for `signal-terminal` traffic and a **supervision socket** for engine
 lifecycle/readiness. Those two sockets are distinct; "control" is not used as
 the component-boundary contrast with supervision.
 
 `terminal-cell` is the low-level cell library: one child process group, one
 PTY, raw input ports, transcript replay, worker lifecycle observation, and one
 active viewer attachment. Production Persona consumes it as a library inside
-`persona-terminal-daemon`. The standalone `terminal-cell-daemon` remains a
+`terminal-daemon`. The standalone `terminal-cell-daemon` remains a
 development/test harness and local primitive, not the production Persona
 runtime boundary.
 
 Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
-behind this same `persona-terminal` owner and must not become a repository
+behind this same `terminal` owner and must not become a repository
 boundary.
 
 ---
@@ -34,7 +34,7 @@ bytes.
 ```mermaid
 flowchart LR
     harness["persona-harness"]
-    terminal["persona-terminal-daemon"]
+    terminal["terminal-daemon"]
     cell["TerminalCell actors"]
     viewer["visible viewer"]
     child["child PTY"]
@@ -47,14 +47,14 @@ flowchart LR
     cell --> child
 ```
 
-The component communication path (`persona-harness` → `persona-terminal`) is
+The component communication path (`persona-harness` → `terminal`) is
 typed Signal. Inside the component daemon, terminal sessions are data-bearing
 actors around `terminal-cell`. The data path (visible viewer ↔ session data
 socket ↔ terminal cell) is raw bytes.
 
 ## 1 · Component Surface
 
-`persona-terminal` exposes:
+`terminal` exposes:
 
 - consolidated component daemon;
 - component communication socket;
@@ -71,23 +71,23 @@ socket ↔ terminal cell) is raw bytes.
   prompt-state checks, and injection decisions;
 - component Sema table for named terminal sessions;
 - read-only session inspection CLIs;
-- `signal-persona-terminal` request/event adapter.
-- `owner-signal-persona-terminal` session-lifecycle adapter.
+- `signal-terminal` request/event adapter.
+- `owner-signal-terminal` session-lifecycle adapter.
 
 ## 1.5 · Supervision relation, prompt-pattern lifecycle, gate forwarding, message landing
 
-**Communication / raw split.** `persona-terminal` receives ordinary
+**Communication / raw split.** `terminal` receives ordinary
 terminal Signal frames (`ResolveSession`, `RegisterPromptPattern`,
 `AcquireInputGate`, `WriteInjection`, `ReleaseInputGate`, subscription
-frames, `TerminalCapture`, and the rest of `signal-persona-terminal`) on its
+frames, `TerminalCapture`, and the rest of `signal-terminal`) on its
 component communication socket. Owner-only session lifecycle frames
-(`CreateSession`, `RetireSession`) use `owner-signal-persona-terminal`
+(`CreateSession`, `RetireSession`) use `owner-signal-terminal`
 and are accepted only on the owner terminal surface. Raw attached-viewer
 bytes flow viewer ↔ terminal-cell data path and do not cross either
 communication surface.
 
 **Supervision relation.** The engine-facing binary is
-`persona-terminal-daemon`. It owns `signal-persona::SpawnEnvelope` handling
+`terminal-daemon`. It owns `signal-persona::SpawnEnvelope` handling
 and the `signal-persona::SupervisionRequest` answer surface. The daemon reads
 its typed configuration at startup, binds its communication and supervision
 sockets, starts its terminal session actors, and reports readiness only after
@@ -95,7 +95,7 @@ those sockets and actors are available.
 
 **Prompt-pattern lifecycle**. `persona-harness` registers a per-adapter
 `PromptPattern` with the supervisor at session-create time via
-`signal-persona-terminal::RegisterPromptPattern`. The supervisor
+`signal-terminal::RegisterPromptPattern`. The supervisor
 forwards the registration to the relevant terminal-cell `control.sock`; the cell
 returns a typed `PromptPatternIdentifier` which the supervisor stores keyed by
 harness identity. Later `AcquireInputGate { pattern_id }` requests reference
@@ -105,13 +105,13 @@ that id.
 it resolves the named session in component Sema, asks that session's terminal
 cell to acquire the gate, awaits the typed `GateAcquired { lease,
 prompt_state }` reply, and relays it. The `prompt_state` carries `Clean |
-Dirty | NotChecked` per `signal-persona-terminal::PromptState`. Prototype
+Dirty | NotChecked` per `signal-terminal::PromptState`. Prototype
 default: dirty state defers injection (`InjectionRejected { reason:
 DirtyPrompt }`); clean-then-inject machinery is deferred.
 
 **Message-landing endpoint.** The prototype's live message path terminates
 here. `persona-harness` calls `AcquireInputGate { pattern_id }` on
-`persona-terminal` → the session actor returns `GateAcquired { lease,
+`terminal` → the session actor returns `GateAcquired { lease,
 prompt_state }` → if `Clean`, harness calls `WriteInjection { lease, bytes,
 injection_sequence }` → the terminal cell writes bytes to the child PTY →
 returns `InjectionAck { sequence }` → terminal relays back through harness →
@@ -123,7 +123,7 @@ prototype's witness reads the transcript to verify the end-to-end path.
 The terminal cell owns the child process and PTY. Viewers are disposable
 clients. Closing a viewer does not kill the harness.
 
-The production `persona-terminal` supervisor owns the registry around terminal
+The production `terminal` supervisor owns the registry around terminal
 cells: named sessions, session health, socket paths, viewer attachments, and
 Sema-backed durable terminal metadata. The low-level `terminal-cell` session
 owns one child process group and one PTY. The supervisor chooses and launches
@@ -131,34 +131,34 @@ viewer adapters; the adapters draw windows and forward raw terminal bytes over
 the cell's `data.sock`.
 
 The current daemon writes a named session record into the component Sema after
-the terminal-cell sockets are bound. The `persona-terminal-sessions` and
-`persona-terminal-resolve` binaries are read-only inspection clients for that
+the terminal-cell sockets are bound. The `terminal-sessions` and
+`terminal-resolve` binaries are read-only inspection clients for that
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
 
-`persona-terminal-signal` is the current contract witness client. It constructs
-`signal-persona-terminal` requests, sends them as length-prefixed Signal frames
+`terminal-signal` is the current contract witness client. It constructs
+`signal-terminal` requests, sends them as length-prefixed Signal frames
 to a terminal communication socket, and renders the resulting terminal event.
 
 The target runtime ships one component daemon:
 
-`persona-terminal-daemon` is the **component daemon**. It binds the component
+`terminal-daemon` is the **component daemon**. It binds the component
 communication socket and supervision socket, owns component Sema, starts
 data-bearing terminal session actors, and embeds the `terminal_cell` library
-for each child PTY. `owner-signal-persona-terminal::CreateSession` mutates
+for each child PTY. `owner-signal-terminal::CreateSession` mutates
 the component registry and starts a terminal session actor.
-`signal-persona-terminal::ListSessions` and
-`signal-persona-terminal::ResolveSession` read the component registry and
+`signal-terminal::ListSessions` and
+`signal-terminal::ResolveSession` read the component registry and
 return the data-socket attachment path.
-`owner-signal-persona-terminal::RetireSession` removes a session through the
+`owner-signal-terminal::RetireSession` removes a session through the
 same component owner.
 
 The current implementation still contains transitional binaries whose behavior
 is being folded into that daemon:
 
-- `persona-terminal-daemon` currently owns one PTY and writes a
+- `terminal-daemon` currently owns one PTY and writes a
   `SessionRegistration` into component Sema for tests.
-- `persona-terminal-supervisor` currently binds the engine-facing Signal
+- `terminal-supervisor` currently binds the engine-facing Signal
   socket, answers supervision traffic, resolves sessions from component Sema,
   and forwards requests to registered cells.
 
@@ -200,14 +200,14 @@ This repo does not own:
 - authorization.
 
 `persona-harness` is a sibling engine component and a client of this repo's
-terminal contract. `persona-terminal` is not a subcomponent of harness; the
+terminal contract. `terminal` is not a subcomponent of harness; the
 engine manager supervises both and pushes their peer socket paths at spawn.
 
-Production registry state lives in `persona-terminal`'s component Sema, not in
+Production registry state lives in `terminal`'s component Sema, not in
 viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
 remains a convenience cache; the typed terminal registry is the durable source
 of truth. The table value record shapes for inspectable terminal state are
-owned by `signal-persona-terminal`'s introspection module; this component owns
+owned by `signal-terminal`'s introspection module; this component owns
 the redb file, table declarations, write sequencing, and read consistency.
 
 ## 4 · Constraints
@@ -226,10 +226,10 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ### 4.2 · Communication plane vs data plane
 
-- `persona-terminal` owns the component communication plane. Ordinary typed
+- `terminal` owns the component communication plane. Ordinary typed
   Signal frames flow over the component communication socket.
 - Owner-only session lifecycle frames flow over the owner terminal surface.
-  The ordinary `signal-persona-terminal` surface does not know
+  The ordinary `signal-terminal` surface does not know
   `CreateSession` or `RetireSession`.
 - Raw attached-viewer bytes flow viewer ↔ session data socket ↔ terminal
   cell and never traverse the component communication socket.
@@ -248,13 +248,13 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ### 4.3 · Component daemon and transitional binaries
 
-- `persona-terminal-daemon` is the production component daemon. It binds a
+- `terminal-daemon` is the production component daemon. It binds a
   communication socket and a supervision socket, owns component Sema, and
   owns all terminal session actors.
-- `persona-terminal-supervisor` is transitional code being folded into the
+- `terminal-supervisor` is transitional code being folded into the
   component daemon. Its tests remain useful because they prove registry
   resolution, Signal frame handling, and supervision replies.
-- Standalone `persona-terminal-daemon` one-PTY behavior is transitional code
+- Standalone `terminal-daemon` one-PTY behavior is transitional code
   used by stateful witnesses while the consolidated daemon lands.
 - Every bound socket applies `PERSONA_SOCKET_MODE` (mode 0600 by default) in
   the engine-spawned path.
@@ -275,14 +275,14 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 ### 4.5 · Wire and registry
 
 - Named terminal sessions are component state. The daemon records them in
-  `persona-terminal`'s component Sema; no registry JSON, text manifest, or
+  `terminal`'s component Sema; no registry JSON, text manifest, or
   viewer-specific state file is the source of truth.
 - Session lifecycle mutation is accepted only through
-  `owner-signal-persona-terminal`; ordinary terminal Signal can only read
+  `owner-signal-terminal`; ordinary terminal Signal can only read
   the registry with `ListSessions` and `ResolveSession`.
 - The supervisor socket resolves terminal names through component Sema
-  before terminal effects. Callers send `signal-persona-terminal` frames to
-  `persona-terminal`, not directly to stored terminal-cell sockets.
+  before terminal effects. Callers send `signal-terminal` frames to
+  `terminal`, not directly to stored terminal-cell sockets.
 - Supervisor-request state is committed around the terminal effect:
   `delivery_attempts` before forwarding, `terminal_events` after the typed
   event returns. Viewer attachments, session health, and session archive
@@ -338,7 +338,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ### 5.2 · Communication plane vs data plane
 
-- **Two-socket registration**: starting `persona-terminal-daemon` with
+- **Two-socket registration**: starting `terminal-daemon` with
   `--name` writes a `SessionRegistration` whose typed
   `control_socket_path` and `data_socket_path` fields point at the daemon's
   bound listeners. Reading the row back through the registry returns both.
@@ -371,7 +371,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 - **Component Sema registry**: register a named terminal session, read it
   back with the session inspection CLI, and prove both socket paths came
   from the Sema table. The same witness sets `PERSONA_SOCKET_MODE=600`
-  before launching `persona-terminal-daemon` and verifies the
+  before launching `terminal-daemon` and verifies the
   terminal-cell socket metadata. Exposed as
   `nix run .#test-named-session-registry`.
 - **Session-health registration**: register a named terminal session
@@ -388,7 +388,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 - **Signal-to-terminal-cell**: start a real terminal-cell-backed daemon,
   resolve its named local control socket from Sema, send `TerminalConnection`,
   `TerminalInput`, and `TerminalCapture` through the
-  `signal-persona-terminal` adapter, and prove captured bytes came from
+  `signal-terminal` adapter, and prove captured bytes came from
   the child PTY. Exposed as `nix run .#test-terminal-signal`.
 - **Gate-and-cache injection**: register a prompt pattern, acquire an
   input gate with clean prompt state, send viewer bytes while locked,
@@ -406,30 +406,30 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ### 5.6 · Supervisor routing
 
-- **Communication socket routing**: send one `signal-persona-terminal`
+- **Communication socket routing**: send one `signal-terminal`
   request to the transitional supervisor socket, prove it resolves the named session
   through component Sema, forwards the frame to the registered terminal
   control socket, records the delivery attempt and terminal event, and
   returns the typed terminal event. Exposed as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
 - **Owner surface separation**: send an
-  `owner-signal-persona-terminal::CreateSession` through the
+  `owner-signal-terminal::CreateSession` through the
   supervisor's owner request path and prove it reaches the owner surface as
-  an owner request, not an ordinary `signal-persona-terminal` variant.
+  an owner request, not an ordinary `signal-terminal` variant.
 - **Supervisor subscription routing**: send
   `SubscribeTerminalWorkerLifecycle` to the supervisor socket, prove it
   records the attempt, relays an initial lifecycle snapshot and a
   following lifecycle delta from the registered terminal control socket,
   and persists both typed events.
-- **Spawn-envelope startup**: construct `persona-terminal-supervisor`
+- **Spawn-envelope startup**: construct `terminal-supervisor`
   without CLI path arguments and prove it resolves its socket and
   component Sema path from `PERSONA_SOCKET_PATH` and
   `PERSONA_STATE_PATH`.
-- **Supervisor socket mode**: bind `persona-terminal-supervisor` with an
+- **Supervisor socket mode**: bind `terminal-supervisor` with an
   explicit managed socket mode and prove the real Unix socket metadata
   is mode 0600 on the primary supervisor socket.
 - **Supervisor binary applies mode**: the spawned
-  `persona-terminal-supervisor` binary applies `PERSONA_SOCKET_MODE` to
+  `terminal-supervisor` binary applies `PERSONA_SOCKET_MODE` to
   both its supervision socket and its primary supervisor socket.
 
 ## 6 · Invariants
@@ -444,20 +444,20 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ```text
 src/pty.rs                         terminal-cell daemon/view/client adapter
-src/contract.rs                    signal-persona-terminal adapter
+src/contract.rs                    signal-terminal adapter
 src/signal_control.rs              Kameo actor for prompt/gate/injection control state
 src/supervisor.rs                  engine-facing Signal supervisor socket and owner-terminal request surface
-src/tables.rs                      component Sema tables over signal-persona-terminal introspection records
+src/tables.rs                      component Sema tables over signal-terminal introspection records
 src/registry.rs                    session registration + inspection clients
 src/capture_validator.rs           structured validator for signal-capture TSV artifacts
-src/bin/persona-terminal-daemon.rs  current one-PTY daemon entry; consolidating into component daemon
-src/bin/persona-terminal-view.rs    viewer entry
-src/bin/persona-terminal-send.rs    raw input sender
-src/bin/persona-terminal-sessions.rs read-only session inspection
-src/bin/persona-terminal-resolve.rs  read-only session name resolver
-src/bin/persona-terminal-signal.rs   signal terminal request client
-src/bin/persona-terminal-validate-capture.rs test/debug capture artifact validator
-src/bin/persona-terminal-supervisor.rs transitional communication/supervision socket entry
+src/bin/terminal-daemon.rs  current one-PTY daemon entry; consolidating into component daemon
+src/bin/terminal-view.rs    viewer entry
+src/bin/terminal-send.rs    raw input sender
+src/bin/terminal-sessions.rs read-only session inspection
+src/bin/terminal-resolve.rs  read-only session name resolver
+src/bin/terminal-signal.rs   signal terminal request client
+src/bin/terminal-validate-capture.rs test/debug capture artifact validator
+src/bin/terminal-supervisor.rs transitional communication/supervision socket entry
 scripts/named-session-registry-witness stateful named-session witness
 scripts/terminal-signal-witness      stateful signal-to-terminal-cell witness
 scripts/gate-cache-witness           stateful gate-and-cache injection witness

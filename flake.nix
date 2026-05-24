@@ -51,8 +51,8 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              pname = "persona-terminal";
-              meta.mainProgram = "persona-terminal-view";
+              pname = "terminal";
+              meta.mainProgram = "terminal";
             }
           );
         }
@@ -64,52 +64,52 @@
           context = mkContext system;
           package = self.packages.${system}.default;
           namedSessionRegistryWitness = context.pkgs.writeShellApplication {
-            name = "persona-terminal-test-named-session-registry";
+            name = "terminal-test-named-session-registry";
             runtimeInputs = [
               context.pkgs.coreutils
               context.pkgs.gnugrep
             ];
             text = ''
-              export PERSONA_TERMINAL_PACKAGE=${package}
-              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              export TERMINAL_PACKAGE=${package}
+              export TERMINAL_BASH=${context.pkgs.bash}/bin/bash
               ${context.pkgs.bash}/bin/bash ${./scripts/named-session-registry-witness}
             '';
           };
           terminalSignalWitness = context.pkgs.writeShellApplication {
-            name = "persona-terminal-test-terminal-signal";
+            name = "terminal-test-terminal-signal";
             runtimeInputs = [
               context.pkgs.coreutils
               context.pkgs.gnugrep
             ];
             text = ''
-              export PERSONA_TERMINAL_PACKAGE=${package}
-              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              export TERMINAL_PACKAGE=${package}
+              export TERMINAL_BASH=${context.pkgs.bash}/bin/bash
               ${context.pkgs.bash}/bin/bash ${./scripts/terminal-signal-witness}
             '';
           };
           gateCacheWitness = context.pkgs.writeShellApplication {
-            name = "persona-terminal-test-gate-cache";
+            name = "terminal-test-gate-cache";
             runtimeInputs = [
               context.pkgs.coreutils
               context.pkgs.gawk
               context.pkgs.gnugrep
             ];
             text = ''
-              export PERSONA_TERMINAL_PACKAGE=${package}
-              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              export TERMINAL_PACKAGE=${package}
+              export TERMINAL_BASH=${context.pkgs.bash}/bin/bash
               ${context.pkgs.bash}/bin/bash ${./scripts/gate-cache-witness}
             '';
           };
           dirtyPromptDefersWitness = context.pkgs.writeShellApplication {
-            name = "persona-terminal-test-dirty-prompt-defers";
+            name = "terminal-test-dirty-prompt-defers";
             runtimeInputs = [
               context.pkgs.coreutils
               context.pkgs.gawk
               context.pkgs.gnugrep
             ];
             text = ''
-              export PERSONA_TERMINAL_PACKAGE=${package}
-              export PERSONA_TERMINAL_BASH=${context.pkgs.bash}/bin/bash
+              export TERMINAL_PACKAGE=${package}
+              export TERMINAL_BASH=${context.pkgs.bash}/bin/bash
               ${context.pkgs.bash}/bin/bash ${./scripts/dirty-prompt-defers-witness}
             '';
           };
@@ -117,61 +117,61 @@
         {
           default = {
             type = "app";
-            program = "${package}/bin/persona-terminal-view";
+            program = "${package}/bin/terminal";
           };
           daemon = {
             type = "app";
-            program = "${package}/bin/persona-terminal-daemon";
+            program = "${package}/bin/terminal-daemon";
           };
           view = {
             type = "app";
-            program = "${package}/bin/persona-terminal-view";
+            program = "${package}/bin/terminal";
           };
           send = {
             type = "app";
-            program = "${package}/bin/persona-terminal-send";
+            program = "${package}/bin/terminal-send";
           };
           capture = {
             type = "app";
-            program = "${package}/bin/persona-terminal-capture";
+            program = "${package}/bin/terminal-capture";
           };
           type = {
             type = "app";
-            program = "${package}/bin/persona-terminal-type";
+            program = "${package}/bin/terminal-type";
           };
           sessions = {
             type = "app";
-            program = "${package}/bin/persona-terminal-sessions";
+            program = "${package}/bin/terminal-sessions";
           };
           resolve = {
             type = "app";
-            program = "${package}/bin/persona-terminal-resolve";
+            program = "${package}/bin/terminal-resolve";
           };
           signal = {
             type = "app";
-            program = "${package}/bin/persona-terminal-signal";
+            program = "${package}/bin/terminal-signal";
           };
           supervisor = {
             type = "app";
-            program = "${package}/bin/persona-terminal-supervisor";
+            program = "${package}/bin/terminal-supervisor";
           };
           # This witness allocates a host PTY, so it is an app instead of a
           # pure Nix builder check.
           test-named-session-registry = {
             type = "app";
-            program = "${namedSessionRegistryWitness}/bin/persona-terminal-test-named-session-registry";
+            program = "${namedSessionRegistryWitness}/bin/terminal-test-named-session-registry";
           };
           test-terminal-signal = {
             type = "app";
-            program = "${terminalSignalWitness}/bin/persona-terminal-test-terminal-signal";
+            program = "${terminalSignalWitness}/bin/terminal-test-terminal-signal";
           };
           test-gate-cache = {
             type = "app";
-            program = "${gateCacheWitness}/bin/persona-terminal-test-gate-cache";
+            program = "${gateCacheWitness}/bin/terminal-test-gate-cache";
           };
           test-dirty-prompt-defers = {
             type = "app";
-            program = "${dirtyPromptDefersWitness}/bin/persona-terminal-test-dirty-prompt-defers";
+            program = "${dirtyPromptDefersWitness}/bin/terminal-test-dirty-prompt-defers";
           };
         }
       );

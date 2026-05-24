@@ -2,17 +2,17 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use persona_terminal::Error;
-use persona_terminal::registry::SessionRegistration;
-use persona_terminal::registry::SessionResolveRequest;
-use persona_terminal::tables::{StoreLocation, TerminalTables};
-use signal_persona_terminal::{
+use signal_terminal::{
     TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEventObservation,
     TerminalGeneration, TerminalName, TerminalObservationSequence, TerminalOperationKind,
     TerminalReady, TerminalReply, TerminalSessionArchiveObservation, TerminalSessionArchiveState,
     TerminalSessionHealthObservation, TerminalSessionObservation, TerminalSessionState,
     TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
 };
+use terminal::Error;
+use terminal::registry::SessionRegistration;
+use terminal::registry::SessionResolveRequest;
+use terminal::tables::{StoreLocation, TerminalTables};
 
 struct RegistryFixture {
     root: PathBuf,
@@ -22,7 +22,7 @@ struct RegistryFixture {
 impl RegistryFixture {
     fn new(name: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
-            "persona-terminal-registry-{name}-{}-{}",
+            "terminal-registry-{name}-{}-{}",
             std::process::id(),
             Self::stamp()
         ));

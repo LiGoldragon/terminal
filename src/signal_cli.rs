@@ -6,7 +6,7 @@ use signal_core::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
     SignalVerb, SubReply,
 };
-use signal_persona_terminal::{
+use signal_terminal::{
     AcquireInputGate, GateAcquired, GateBusy, GateReleased, InjectionAck, InjectionRejected,
     InputGateLease, InputGateLeaseIdentifier, InputGateReason, ListPromptPatterns, PromptPattern,
     PromptPatternBytes, PromptPatternList, PromptPatternRegistered, PromptPatternUnregistered,
@@ -22,7 +22,7 @@ use signal_persona_terminal::{
 use crate::pty::TerminalSocket;
 use crate::{Error, Result};
 
-const DEFAULT_CONTROL_SOCKET: &str = "/tmp/persona-terminal.control.sock";
+const DEFAULT_CONTROL_SOCKET: &str = "/tmp/terminal.control.sock";
 const DEFAULT_TERMINAL: &str = "operator";
 
 fn synthetic_exchange() -> ExchangeIdentifier {
@@ -126,15 +126,15 @@ impl TerminalSignalOperation {
             .into(),
             Self::UnregisterPrompt { pattern_id } => UnregisterPromptPattern {
                 terminal,
-                pattern_id: signal_persona_terminal::PromptPatternIdentifier::new(pattern_id),
+                pattern_id: signal_terminal::PromptPatternIdentifier::new(pattern_id),
             }
             .into(),
             Self::ListPrompts => ListPromptPatterns { terminal }.into(),
             Self::AcquireGate { pattern_id } => AcquireInputGate {
                 terminal,
-                reason: InputGateReason::new("persona-terminal signal cli"),
+                reason: InputGateReason::new("terminal signal cli"),
                 prompt_pattern_identifier: pattern_id
-                    .map(signal_persona_terminal::PromptPatternIdentifier::new),
+                    .map(signal_terminal::PromptPatternIdentifier::new),
             }
             .into(),
             Self::ReleaseGate { lease_id } => ReleaseInputGate {

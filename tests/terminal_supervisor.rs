@@ -8,18 +8,11 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use owner_signal_persona_terminal::{
+use owner_signal_terminal::{
     CreateSession, OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
-use persona_terminal::registry::SessionRegistration;
-use persona_terminal::supervisor::{
-    TerminalSupervisor, TerminalSupervisorCommandLine, TerminalSupervisorDaemon,
-    TerminalSupervisorFrameCodec, TerminalSupervisorOwnerRequest,
-};
-use persona_terminal::tables::{StoreLocation, TerminalTables};
-use persona_terminal::{SocketMode, SupervisionFrameCodec};
 use signal_core::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Operation, Request,
     RequestRejectionReason, SessionEpoch, SignalVerb,
@@ -36,7 +29,7 @@ use signal_persona::{
     ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion, Presence,
     WirePath,
 };
-use signal_persona_terminal::{
+use signal_terminal::{
     ListSessions, PromptPattern, PromptPatternBytes, PromptPatternIdentifier,
     PromptPatternRegistered, RegisterPromptPattern, ResolveSession, SessionEntry, SessionList,
     SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState, TerminalEvent,
@@ -44,6 +37,13 @@ use signal_persona_terminal::{
     TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
     TerminalWorkerStopReason,
 };
+use terminal::registry::SessionRegistration;
+use terminal::supervisor::{
+    TerminalSupervisor, TerminalSupervisorCommandLine, TerminalSupervisorDaemon,
+    TerminalSupervisorFrameCodec, TerminalSupervisorOwnerRequest,
+};
+use terminal::tables::{StoreLocation, TerminalTables};
+use terminal::{SocketMode, SupervisionFrameCodec};
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -174,7 +174,7 @@ fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
         .expect_err("mismatched verb is rejected");
 
     match error {
-        persona_terminal::Error::InvalidSignalRequest { reason } => {
+        terminal::Error::InvalidSignalRequest { reason } => {
             assert_eq!(
                 reason,
                 RequestRejectionReason::VerbPayloadMismatch { index: 0 }
@@ -448,7 +448,7 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
     let fixture = SupervisorFixture::new("spawn-envelope-environment");
     let socket = fixture.root.join("run").join("terminal.sock");
     let state = fixture.root.join("state").join("terminal.redb");
-    let terminal_store = EnvironmentRestore::capture("PERSONA_TERMINAL_STORE");
+    let terminal_store = EnvironmentRestore::capture("TERMINAL_STORE");
     let state_path = EnvironmentRestore::capture("PERSONA_STATE_PATH");
     let socket_path = EnvironmentRestore::capture("PERSONA_SOCKET_PATH");
 
@@ -468,7 +468,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     use nota_codec::{Encoder, NotaEncode};
     use signal_persona::{SocketMode as WireSocketMode, WirePath};
     use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
-    use signal_persona_terminal::TerminalDaemonConfiguration;
+    use signal_terminal::TerminalDaemonConfiguration;
 
     let fixture = SupervisorFixture::new("supervision");
     let supervision_socket = fixture.supervision_socket();
@@ -489,10 +489,10 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     text.push('\n');
     fs::write(&configuration_path, text).expect("write terminal config");
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_persona-terminal-supervisor"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_terminal-supervisor"))
         .arg(&configuration_path)
         .spawn()
-        .expect("persona-terminal-supervisor starts");
+        .expect("terminal-supervisor starts");
 
     wait_for_socket(&supervision_socket);
     let mode = fs::metadata(&supervision_socket)
@@ -517,7 +517,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
         & 0o777;
     assert_eq!(
         supervisor_mode, 0o600,
-        "spawned persona-terminal-supervisor applies PERSONA_SOCKET_MODE to its primary socket"
+        "spawned terminal-supervisor applies PERSONA_SOCKET_MODE to its primary socket"
     );
 
     let mut stream = UnixStream::connect(&supervision_socket).expect("client connects");
@@ -526,7 +526,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     write_supervision_request(
         &mut stream,
         SupervisionRequest::Announce(Presence {
-            expected_component: ComponentName::new("persona-terminal"),
+            expected_component: ComponentName::new("terminal"),
             expected_kind: ComponentKind::Terminal,
             engine_management_protocol_version: EngineManagementProtocolVersion::new(1),
         }),
@@ -534,14 +534,14 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     assert!(matches!(
         codec.read_reply(&mut stream).expect("identity reply"),
         SupervisionReply::Identified(identity)
-            if identity.name.as_str() == "persona-terminal"
+            if identity.name.as_str() == "terminal"
                 && identity.kind == ComponentKind::Terminal
     ));
 
     write_supervision_request(
         &mut stream,
         SupervisionRequest::Query(SupervisionQuery::ReadinessStatus(ComponentName::new(
-            "persona-terminal",
+            "terminal",
         ))),
     );
     assert!(matches!(
@@ -552,7 +552,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     write_supervision_request(
         &mut stream,
         SupervisionRequest::Query(SupervisionQuery::HealthStatus(ComponentName::new(
-            "persona-terminal",
+            "terminal",
         ))),
     );
     assert!(matches!(
@@ -679,7 +679,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     assert_eq!(attempts.len(), 1);
     assert_eq!(
         attempts[0].operation(),
-        signal_persona_terminal::TerminalOperationKind::SubscribeTerminalWorkerLifecycle
+        signal_terminal::TerminalOperationKind::SubscribeTerminalWorkerLifecycle
     );
 
     let events = tables

@@ -5,7 +5,7 @@ use kameo::actor::ActorRef;
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
 use regex::bytes::Regex;
-use signal_persona_terminal as terminal_signal;
+use signal_terminal as terminal_signal;
 use terminal_cell::{
     InputSource, TerminalCell, TerminalCellError, TerminalInput, TerminalInputGateLease,
     TerminalInputGateSequence, TerminalInputPort, TerminalSize, TerminalWorkerKind,
@@ -133,7 +133,7 @@ impl TerminalSignalControl {
             terminal_signal::TerminalRequest::ListSessions(_)
             | terminal_signal::TerminalRequest::ResolveSession(_) => {
                 Err(TerminalSignalControlFailure::new(
-                    "session registry queries belong to the consolidated persona-terminal daemon",
+                    "session registry queries belong to the consolidated terminal daemon",
                 ))
             }
         }

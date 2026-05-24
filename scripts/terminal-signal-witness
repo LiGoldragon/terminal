@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${PERSONA_TERMINAL_PACKAGE:?PERSONA_TERMINAL_PACKAGE must point at the built package}"
-: "${PERSONA_TERMINAL_BASH:?PERSONA_TERMINAL_BASH must point at bash}"
+: "${TERMINAL_PACKAGE:?TERMINAL_PACKAGE must point at the built package}"
+: "${TERMINAL_BASH:?TERMINAL_BASH must point at bash}"
 
-root="${PERSONA_TERMINAL_TEST_ROOT:-$(mktemp -d -t persona-terminal-signal.XXXXXX)}"
+root="${TERMINAL_TEST_ROOT:-$(mktemp -d -t terminal-signal.XXXXXX)}"
 mkdir -p "$root"
 
 store="$root/terminal.redb"
@@ -22,20 +22,20 @@ cleanup() {
     wait "$daemon_pid" 2>/dev/null || true
   fi
 
-  if [ "${PERSONA_TERMINAL_KEEP_ARTIFACTS:-1}" = "1" ]; then
-    printf 'persona-terminal signal artifacts=%s\n' "$root"
+  if [ "${TERMINAL_KEEP_ARTIFACTS:-1}" = "1" ]; then
+    printf 'terminal signal artifacts=%s\n' "$root"
   else
     rm -rf "$root"
   fi
 }
 trap cleanup EXIT
 
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-daemon" \
+"$TERMINAL_PACKAGE/bin/terminal-daemon" \
   --store "$store" \
   --name operator \
   --control-socket "$control_socket" \
   --data-socket "$data_socket" \
-  -- "$PERSONA_TERMINAL_BASH" -lc 'printf "terminal-ready\n"; while IFS= read -r line; do printf "signal-echo:%s\n" "$line"; done' \
+  -- "$TERMINAL_BASH" -lc 'printf "terminal-ready\n"; while IFS= read -r line; do printf "signal-echo:%s\n" "$line"; done' \
   >"$stdout" \
   2>"$stderr" &
 daemon_pid="$!"
@@ -43,7 +43,7 @@ daemon_pid="$!"
 for _ in $(seq 1 100); do
   if [ -S "$control_socket" ] \
     && [ -S "$data_socket" ] \
-    && grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"; then
+    && grep -Fq "terminal-daemon control-socket=$control_socket" "$stdout"; then
     break
   fi
   sleep 0.05
@@ -51,20 +51,20 @@ done
 
 test -S "$control_socket"
 test -S "$data_socket"
-grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"
+grep -Fq "terminal-daemon control-socket=$control_socket" "$stdout"
 grep -Fq "data-socket=$data_socket" "$stdout"
 
-resolved="$("$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-resolve" --store "$store" operator)"
+resolved="$("$TERMINAL_PACKAGE/bin/terminal-resolve" --store "$store" operator)"
 test "$resolved" = "$control_socket"
 
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+"$TERMINAL_PACKAGE/bin/terminal-signal" \
   --control-socket "$resolved" \
   --terminal operator \
   connect \
   >"$connect_event"
 grep -Fq $'TerminalReady\toperator\t1' "$connect_event"
 
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+"$TERMINAL_PACKAGE/bin/terminal-signal" \
   --control-socket "$resolved" \
   --terminal operator \
   prompt signal-input-from-signal \
@@ -73,7 +73,7 @@ grep -Fq $'TerminalInputAccepted\toperator\t1' "$input_event"
 
 needle="$(printf 'signal-echo:signal-input-from-signal' | od -An -tx1 | tr -d ' \n')"
 for _ in $(seq 1 100); do
-  "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-signal" \
+  "$TERMINAL_PACKAGE/bin/terminal-signal" \
     --control-socket "$resolved" \
     --terminal operator \
     capture \
@@ -86,4 +86,4 @@ done
 
 grep -Fq $'TerminalCaptured\toperator\t1' "$capture_event"
 grep -Fq "$needle" "$capture_event"
-printf 'persona-terminal signal witness=passed\n'
+printf 'terminal signal witness=passed\n'

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${PERSONA_TERMINAL_PACKAGE:?PERSONA_TERMINAL_PACKAGE must point at the built package}"
-: "${PERSONA_TERMINAL_BASH:?PERSONA_TERMINAL_BASH must point at bash}"
+: "${TERMINAL_PACKAGE:?TERMINAL_PACKAGE must point at the built package}"
+: "${TERMINAL_BASH:?TERMINAL_BASH must point at bash}"
 
-root="${PERSONA_TERMINAL_TEST_ROOT:-$(mktemp -d -t persona-terminal-named-session.XXXXXX)}"
+root="${TERMINAL_TEST_ROOT:-$(mktemp -d -t terminal-named-session.XXXXXX)}"
 mkdir -p "$root"
 
 store="$root/terminal.redb"
@@ -21,8 +21,8 @@ cleanup() {
     wait "$daemon_pid" 2>/dev/null || true
   fi
 
-  if [ "${PERSONA_TERMINAL_KEEP_ARTIFACTS:-1}" = "1" ]; then
-    printf 'persona-terminal artifacts=%s\n' "$root"
+  if [ "${TERMINAL_KEEP_ARTIFACTS:-1}" = "1" ]; then
+    printf 'terminal artifacts=%s\n' "$root"
   else
     rm -rf "$root"
   fi
@@ -30,12 +30,12 @@ cleanup() {
 trap cleanup EXIT
 
 export PERSONA_SOCKET_MODE=600
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-daemon" \
+"$TERMINAL_PACKAGE/bin/terminal-daemon" \
   --store "$store" \
   --name operator \
   --control-socket "$control_socket" \
   --data-socket "$data_socket" \
-  -- "$PERSONA_TERMINAL_BASH" -lc 'printf "terminal-ready\n"; cat' \
+  -- "$TERMINAL_BASH" -lc 'printf "terminal-ready\n"; cat' \
   >"$stdout" \
   2>"$stderr" &
 daemon_pid="$!"
@@ -43,7 +43,7 @@ daemon_pid="$!"
 for _ in $(seq 1 100); do
   if [ -S "$control_socket" ] \
     && [ -S "$data_socket" ] \
-    && grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"; then
+    && grep -Fq "terminal-daemon control-socket=$control_socket" "$stdout"; then
     break
   fi
   sleep 0.05
@@ -51,22 +51,22 @@ done
 
 test -S "$control_socket"
 test -S "$data_socket"
-grep -Fq "persona-terminal-daemon control-socket=$control_socket" "$stdout"
+grep -Fq "terminal-daemon control-socket=$control_socket" "$stdout"
 grep -Fq "data-socket=$data_socket" "$stdout"
 test "$(stat -c '%a' "$control_socket")" = "600"
 test "$(stat -c '%a' "$data_socket")" = "600"
 
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-sessions" --store "$store" >"$sessions"
+"$TERMINAL_PACKAGE/bin/terminal-sessions" --store "$store" >"$sessions"
 expected_row="$(printf 'operator\t%s\t%s\tready' "$control_socket" "$data_socket")"
 grep -Fq "$expected_row" "$sessions"
 
-resolved="$("$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-resolve" --store "$store" operator)"
+resolved="$("$TERMINAL_PACKAGE/bin/terminal-resolve" --store "$store" operator)"
 test "$resolved" = "$control_socket"
 
-"$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-send" "$resolved" named-input-from-sema
+"$TERMINAL_PACKAGE/bin/terminal-send" "$resolved" named-input-from-sema
 
 for _ in $(seq 1 100); do
-  "$PERSONA_TERMINAL_PACKAGE/bin/persona-terminal-capture" "$resolved" >"$transcript" || true
+  "$TERMINAL_PACKAGE/bin/terminal-capture" "$resolved" >"$transcript" || true
   if grep -aFq "named-input-from-sema" "$transcript"; then
     break
   fi
@@ -74,4 +74,4 @@ for _ in $(seq 1 100); do
 done
 
 grep -aFq "named-input-from-sema" "$transcript"
-printf 'persona-terminal named-session registry witness=passed\n'
+printf 'terminal named-session registry witness=passed\n'

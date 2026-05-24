@@ -1,4 +1,4 @@
-//! Witness that persona-terminal's actor nouns carry data
+//! Witness that terminal's actor nouns carry data
 //! (no public ZST actor markers).
 //!
 //! The no-shared-locks witness lives in
@@ -9,9 +9,9 @@
 //! A future refactor that collapses an actor noun to a marker
 //! ZST breaks this witness.
 
-use persona_terminal::signal_control::TerminalSignalControl;
-use persona_terminal::supervision::SupervisionPhase;
-use persona_terminal::supervisor::TerminalSupervisor;
+use terminal::signal_control::TerminalSignalControl;
+use terminal::supervision::SupervisionPhase;
+use terminal::supervisor::TerminalSupervisor;
 
 #[test]
 fn public_actor_nouns_carry_data() {

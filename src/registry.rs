@@ -1,9 +1,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_persona_terminal::{
-    TerminalName, TerminalSessionHealthObservation, TerminalSessionObservation,
-};
+use signal_terminal::{TerminalName, TerminalSessionHealthObservation, TerminalSessionObservation};
 
 use crate::Error;
 use crate::Result;

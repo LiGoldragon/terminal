@@ -453,15 +453,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
-name = "owner-signal-persona-terminal"
+name = "owner-signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/owner-signal-persona-terminal.git?branch=main#9753806fdcb43c62bb863e5094b7347dfa79bd41"
+source = "git+https://github.com/LiGoldragon/owner-signal-terminal.git?branch=main#40de96f365ab1ac049b1141754f0b59fc959d323"
 dependencies = [
  "nota-codec",
  "rkyv",
  "signal-core",
  "signal-persona",
- "signal-persona-terminal",
+ "signal-terminal",
  "thiserror 2.0.18",
 ]
 
@@ -495,14 +495,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "persona-terminal"
+name = "terminal"
 version = "0.1.0"
 dependencies = [
  "crossterm",
  "kameo",
  "nota-codec",
  "nota-config",
- "owner-signal-persona-terminal",
+ "owner-signal-terminal",
  "regex",
  "rkyv",
  "sema",
@@ -511,7 +511,7 @@ dependencies = [
  "signal-hook",
  "signal-persona",
  "signal-persona-origin",
- "signal-persona-terminal",
+ "signal-terminal",
  "terminal-cell",
  "thiserror 2.0.18",
  "tokio",
@@ -903,9 +903,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "signal-persona-terminal"
+name = "signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-terminal.git?branch=main#0198208189e2c5794cc8739a02d655d410d9884b"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#1c61841a6e0d9e74bd5be38dd6f4f50cfde85d7a"
 dependencies = [
  "nota-codec",
  "nota-config",
@@ -966,7 +966,7 @@ dependencies = [
  "regex",
  "signal-core",
  "signal-hook",
- "signal-persona-terminal",
+ "signal-terminal",
  "thiserror 2.0.18",
  "tokio",
  "vt100",

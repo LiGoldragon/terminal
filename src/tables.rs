@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use sema::{Schema, SchemaVersion, Sema, Table};
-use signal_persona_terminal::{
+use signal_terminal::{
     TerminalDeliveryAttemptObservation, TerminalEventObservation, TerminalName,
     TerminalSessionArchiveObservation, TerminalSessionHealthObservation,
     TerminalSessionObservation, TerminalViewerAttachmentObservation,
@@ -35,11 +35,11 @@ impl StoreLocation {
     }
 
     pub fn from_environment() -> Self {
-        match std::env::var_os("PERSONA_TERMINAL_STORE") {
+        match std::env::var_os("TERMINAL_STORE") {
             Some(path) => Self::new(path),
             None => match std::env::var_os("PERSONA_STATE_PATH") {
                 Some(path) => Self::new(path),
-                None => Self::new("/tmp/persona-terminal.redb"),
+                None => Self::new("/tmp/terminal.redb"),
             },
         }
     }

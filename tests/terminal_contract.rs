@@ -1,6 +1,4 @@
-use persona_terminal::contract::TerminalTransportBinding;
-use persona_terminal::supervisor::TerminalSupervisorFrameCodec;
-use signal_persona_terminal::{
+use signal_terminal::{
     TerminalConnection, TerminalDetached, TerminalDetachment, TerminalDetachmentReason,
     TerminalGeneration, TerminalInput, TerminalInputAccepted, TerminalInputBytes, TerminalName,
     TerminalRejected, TerminalRejectionReason, TerminalReply, TerminalRequest, TerminalSequence,
@@ -8,18 +6,20 @@ use signal_persona_terminal::{
 };
 use std::os::unix::net::UnixListener;
 use std::thread;
+use terminal::contract::TerminalTransportBinding;
+use terminal::supervisor::TerminalSupervisorFrameCodec;
 
 fn terminal_name() -> TerminalName {
     TerminalName::new("operator")
 }
 
 fn binding() -> TerminalTransportBinding {
-    TerminalTransportBinding::from_socket_path(terminal_name(), "/tmp/persona-terminal-test.sock")
+    TerminalTransportBinding::from_socket_path(terminal_name(), "/tmp/terminal-test.sock")
 }
 
 fn unique_socket_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "persona-terminal-{name}-{}-{}.sock",
+        "terminal-{name}-{}-{}.sock",
         std::process::id(),
         thread::current().name().unwrap_or("test")
     ))
@@ -137,7 +137,7 @@ fn terminal_contract_transcript_delta_increments_sequence() {
         TerminalReply::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(1),
-            bytes: signal_persona_terminal::TerminalTranscriptBytes::new(b"first".to_vec()),
+            bytes: signal_terminal::TerminalTranscriptBytes::new(b"first".to_vec()),
         })
     );
     assert_eq!(
@@ -145,7 +145,7 @@ fn terminal_contract_transcript_delta_increments_sequence() {
         TerminalReply::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(2),
-            bytes: signal_persona_terminal::TerminalTranscriptBytes::new(b"second".to_vec()),
+            bytes: signal_terminal::TerminalTranscriptBytes::new(b"second".to_vec()),
         })
     );
 }

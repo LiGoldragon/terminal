@@ -1,4 +1,4 @@
-# persona-terminal skill
+# terminal skill
 
 Work here when the change concerns the Persona terminal component:
 typed Signal communication over the component communication socket, the
@@ -8,10 +8,10 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 ## Communication/data discipline
 
 - This repo owns the component communication plane. Typed Signal flows over
-  `persona-terminal`'s communication socket; supervision uses a separate
+  `terminal`'s communication socket; supervision uses a separate
   supervision socket.
-- Ordinary terminal Signal uses `signal-persona-terminal`. Owner-only
-  session lifecycle mutation uses `owner-signal-persona-terminal`; do not
+- Ordinary terminal Signal uses `signal-terminal`. Owner-only
+  session lifecycle mutation uses `owner-signal-terminal`; do not
   put `CreateSession` / `RetireSession` back into the ordinary contract.
 - Raw viewer bytes flow viewer ↔ session data path directly. They do not
   cross the component communication socket.
@@ -25,13 +25,13 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 
 ## Component daemon
 
-- `persona-terminal-daemon` is the production component daemon. It binds a
+- `terminal-daemon` is the production component daemon. It binds a
   communication socket and a supervision socket, owns component Sema, and
   owns terminal session actors built on the `terminal_cell` library.
 - The owner terminal surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.
-- `persona-terminal-supervisor` and the old one-PTY `persona-terminal-daemon`
+- `terminal-supervisor` and the old one-PTY `terminal-daemon`
   behavior are transitional implementation steps. Keep their witnesses useful
   while folding their behavior into the consolidated component daemon.
 - Every engine-bound socket applies `PERSONA_SOCKET_MODE` (mode 0600 default)
@@ -42,21 +42,21 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - Session registry state lives in this repo's component Sema. Do not add
   registry JSON, text manifests, or viewer-owned state files for terminal
   names.
-- Inspectable terminal table values use `signal-persona-terminal`'s
+- Inspectable terminal table values use `signal-terminal`'s
   introspection record shapes. This repo owns the Sema database, table
   declarations, reducers, and consistency policy.
 - Session registration also writes a `session_health` ready-state row.
 
 ## Scope
 
-- `persona-terminal` is the owner noun. Do not create or revive
+- `terminal` is the owner noun. Do not create or revive
   terminal-brand repository names for viewer implementations.
 - Viewer and compositor behavior is adapter-local around the terminal owner.
   Do not revive terminal-brand mux helpers as runtime paths.
 - Keep harness processes durable. Closing a viewer must not kill the child
   harness process.
 - Keep Persona message semantics out of this repo.
-- Keep `persona-harness` as a sibling client over `signal-persona-terminal`;
+- Keep `persona-harness` as a sibling client over `signal-terminal`;
   do not fold terminal ownership into the harness abstraction.
 - Keep attached keyboard input as a raw byte path. Control behavior uses
   typed socket or Signal requests; it does not use a prefix-key grammar in
