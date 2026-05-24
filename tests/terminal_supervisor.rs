@@ -23,11 +23,10 @@ use signal_frame::{
 };
 use signal_persona::engine_management::{
     Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
-    Query as SupervisionQuery, Reply as SupervisionReply,
+    Presence, Query as SupervisionQuery, Reply as SupervisionReply,
 };
 use signal_persona::{
-    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion, Presence,
-    WirePath,
+    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion, WirePath,
 };
 use signal_terminal::{
     ListSessions, PromptPattern, PromptPatternBytes, PromptPatternIdentifier,
