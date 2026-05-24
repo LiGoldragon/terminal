@@ -1,0 +1,53 @@
+{}
+
+[
+  (Connection [Open])
+  (Input [Terminal Injection])
+  (Resize [Terminal])
+  (Capture [Transcript])
+  (PromptPattern [Register Unregister List])
+  (InputGate [Acquire Release])
+  (Session [List Resolve])
+]
+
+[
+  (CreateSession [Session])
+  (RetireSession [Session])
+  (Policy [ViewerAdapter])
+]
+
+[]
+
+{
+  Connection [(Open Open)]
+  Input [(Terminal Terminal) (Injection Injection)]
+  Resize [(Terminal Terminal)]
+  Capture [(Transcript Transcript)]
+  PromptPattern [(Register Register) (Unregister Unregister) (List List)]
+  InputGate [(Acquire Acquire) (Release Release)]
+  Session [(List List) (Resolve Resolve)]
+  CreateSession [(Session Session)]
+  RetireSession [(Session Session)]
+  Policy [(ViewerAdapter ViewerAdapter)]
+  Terminal (Identifier)
+  Injection (Text)
+  Transcript (Identifier)
+  Register (Text)
+  Unregister (Identifier)
+  List (Text)
+  Acquire (Identifier)
+  Release (Identifier)
+  Resolve (Name)
+  ViewerAdapter (Text)
+  Open (Text)
+  Text (String)
+  Identifier (u64)
+  Name (String)
+  Path (String)
+  Status [Concept Active Retired]
+}
+
+[
+  (Version 0 1)
+  (Status Concept)
+]
