@@ -1,0 +1,58 @@
+{}
+[ListSessions ResolveSession RegisterPromptPattern AcquireInputGate WriteInjection ReleaseInputGate CaptureTranscript]
+[SessionsListed SessionResolved PromptPatternRegistered InputGateAcquired InjectionAcknowledged InputGateReleased TranscriptCaptured Unimplemented Error]
+{
+  ListSessions ListSessionsRequest
+  ResolveSession ResolveSessionRequest
+  RegisterPromptPattern RegisterPromptPatternRequest
+  AcquireInputGate AcquireInputGateRequest
+  WriteInjection WriteInjectionRequest
+  ReleaseInputGate ReleaseInputGateRequest
+  CaptureTranscript CaptureTranscriptRequest
+
+  SessionsListed SessionList
+  SessionResolved SessionResolution
+  PromptPatternRegistered PromptPatternRegistration
+  InputGateAcquired InputGateLease
+  InjectionAcknowledged InjectionReceipt
+  InputGateReleased InputGateReleaseReceipt
+  TranscriptCaptured TranscriptCapture
+  Unimplemented RequestUnimplemented
+  Error ErrorReport
+
+  SessionName String
+  SessionIdentifier Integer
+  PromptPatternIdentifier Integer
+  InputLeaseIdentifier Integer
+  InjectionSequence Integer
+  TranscriptSequence Integer
+  TerminalByte Integer
+  TerminalBytes (Vec TerminalByte)
+  SocketPath Path
+  ErrorMessage String
+
+  ListSessionsRequest { }
+  ResolveSessionRequest { SessionName * }
+  RegisterPromptPatternRequest { SessionName * PromptPatternText * }
+  AcquireInputGateRequest { SessionName * PromptPatternIdentifier * }
+  WriteInjectionRequest { SessionName * InputLeaseIdentifier * InjectionSequence * TerminalBytes * }
+  ReleaseInputGateRequest { SessionName * InputLeaseIdentifier * }
+  CaptureTranscriptRequest { SessionName * }
+
+  PromptPatternText String
+  SessionRecord { SessionName * SessionIdentifier * SocketPath * }
+  SessionRecords (Vec SessionRecord)
+  SessionList { SessionRecords * }
+  SessionResolution { SessionRecord * }
+  PromptPatternRegistration { PromptPatternIdentifier * }
+  PromptState [Clean Dirty NotChecked]
+  InputGateLease { InputLeaseIdentifier * PromptState * }
+  InjectionReceipt { InjectionSequence * }
+  InputGateReleaseReceipt { InputLeaseIdentifier * }
+  TranscriptCapture { TranscriptSequence * TerminalBytes * }
+
+  OperationKind [ListSessions ResolveSession RegisterPromptPattern AcquireInputGate WriteInjection ReleaseInputGate CaptureTranscript]
+  UnimplementedReason [NotInPrototypeScope SessionMissing LeaseMissing DirtyPrompt CellUnavailable]
+  RequestUnimplemented { OperationKind * UnimplementedReason * }
+  ErrorReport { ErrorMessage * }
+}

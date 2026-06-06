@@ -12,6 +12,15 @@ interpreting their meaning. Paired with the contract repos
 `signal-terminal` (ordinary terminal transport vocabulary) and
 `owner-signal-terminal` (owner-only session lifecycle mutation).
 
+Terminal now carries the schema-derived triad substrate in-tree:
+`schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema`
+generate checked-in modules under `src/schema/` through `schema-rust-next`.
+Those generated nouns name the intended internal feature surface: session
+inspection/control at Signal, session lifecycle and terminal-cell effects at
+Nexus, and registry/prompt/lease/injection records at SEMA. The current
+`terminal-supervisor` path is still the active behavior path while the
+generated daemon module waits for the adapter cutover.
+
 ## Repo-scope only
 
 This file carries daemon-side intent for `terminal`. Wire vocabulary

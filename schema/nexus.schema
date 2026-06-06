@@ -1,0 +1,61 @@
+{
+  SignalInput terminal:signal:Input
+  SignalOutput terminal:signal:Output
+  SessionName terminal:signal:SessionName
+  SessionRecord terminal:signal:SessionRecord
+  SessionResolution terminal:signal:SessionResolution
+  PromptPatternRegistration terminal:signal:PromptPatternRegistration
+  InputGateLease terminal:signal:InputGateLease
+  InjectionReceipt terminal:signal:InjectionReceipt
+  TranscriptCapture terminal:signal:TranscriptCapture
+  ErrorReport terminal:signal:ErrorReport
+  SemaWriteInput terminal:sema:WriteInput
+  SemaReadInput terminal:sema:ReadInput
+  SemaWriteOutput terminal:sema:WriteOutput
+  SemaReadOutput terminal:sema:ReadOutput
+}
+[SignalArrived MetaArrived SemaWriteCompleted SemaReadCompleted EffectCompleted]
+[ReplyToSignal CommandSemaWrite CommandSemaRead CommandEffect Continue]
+{
+  SignalArrived SignalInput
+  MetaArrived SessionLifecycleCommand
+  SemaWriteCompleted SemaWriteOutput
+  SemaReadCompleted SemaReadOutput
+  EffectCompleted NexusEffectResult
+
+  ReplyToSignal SignalOutput
+  CommandSemaWrite SemaWriteInput
+  CommandSemaRead SemaReadInput
+  CommandEffect NexusEffectCommand
+  Continue NexusWork
+
+  NexusWork [(SignalArrived SignalArrived) (MetaArrived MetaArrived) (SemaWriteCompleted SemaWriteCompleted) (SemaReadCompleted SemaReadCompleted) (EffectCompleted EffectCompleted)]
+  NexusAction [(ReplyToSignal ReplyToSignal) (CommandSemaWrite CommandSemaWrite) (CommandSemaRead CommandSemaRead) (CommandEffect CommandEffect) (Continue Continue)]
+
+  SessionLifecycleCommand [(CreateSession CreateSession) (RetireSession RetireSession)]
+  CreateSession SessionRecord
+  RetireSession SessionName
+
+  TerminalCellCommand [(StartSession StartSession) (RegisterPromptPattern RegisterPromptPattern) (AcquireInputGate AcquireInputGate) (WriteInjection WriteInjection) (ReleaseInputGate ReleaseInputGate) (CaptureTranscript CaptureTranscript)]
+  StartSession SessionRecord
+  RegisterPromptPattern SessionName
+  AcquireInputGate SessionName
+  WriteInjection SessionName
+  ReleaseInputGate SessionName
+  CaptureTranscript SessionName
+
+  NexusEffectCommand [(RunTerminalCell RunTerminalCell) (PublishTerminalEvent PublishTerminalEvent)]
+  RunTerminalCell TerminalCellCommand
+  PublishTerminalEvent TerminalEvent
+
+  TerminalEvent [(SessionStarted SessionStarted) (PromptPatternReady PromptPatternReady) (GateReady GateReady) (InjectionWritten InjectionWritten) (TranscriptReady TranscriptReady)]
+  SessionStarted SessionResolution
+  PromptPatternReady PromptPatternRegistration
+  GateReady InputGateLease
+  InjectionWritten InjectionReceipt
+  TranscriptReady TranscriptCapture
+
+  NexusEffectResult [(CellSucceeded CellSucceeded) (CellFailed CellFailed)]
+  CellSucceeded TerminalEvent
+  CellFailed ErrorReport
+}

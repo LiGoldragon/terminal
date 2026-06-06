@@ -1,0 +1,34 @@
+{
+  SessionName terminal:signal:SessionName
+  SessionRecord terminal:signal:SessionRecord
+  PromptPatternRegistration terminal:signal:PromptPatternRegistration
+  InputGateLease terminal:signal:InputGateLease
+  InjectionReceipt terminal:signal:InjectionReceipt
+  TranscriptCapture terminal:signal:TranscriptCapture
+  ErrorReport terminal:signal:ErrorReport
+}
+[WriteInput ReadInput]
+[WriteOutput ReadOutput]
+{
+  WriteInput [(RecordSession RecordSession) (RetireSession RetireSession) (RecordPromptPattern RecordPromptPattern) (RecordInputGate RecordInputGate) (RecordInjection RecordInjection)]
+  RecordSession SessionRecord
+  RetireSession SessionName
+  RecordPromptPattern PromptPatternRegistration
+  RecordInputGate InputGateLease
+  RecordInjection InjectionReceipt
+
+  ReadInput [(ListSessionRecords ListSessionRecords) (ResolveSessionRecord ResolveSessionRecord) (ReadTranscript ReadTranscript)]
+  ListSessionRecords ListSessionsMarker
+  ResolveSessionRecord SessionName
+  ReadTranscript SessionName
+
+  WriteOutput [(Committed CommitReceipt) (WriteRejected ErrorReport)]
+  ReadOutput [(SessionRecordsRead SessionRecordsRead) (SessionRecordResolved SessionRecordResolved) (TranscriptRead TranscriptRead) (ReadRejected ErrorReport)]
+
+  ListSessionsMarker { }
+  CommitSequence Integer
+  CommitReceipt { CommitSequence * }
+  SessionRecordsRead { CommitSequence * }
+  SessionRecordResolved SessionRecord
+  TranscriptRead TranscriptCapture
+}

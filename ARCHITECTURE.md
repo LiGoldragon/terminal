@@ -60,6 +60,11 @@ socket ↔ terminal cell) is raw bytes.
 - component communication socket;
 - owner-only terminal communication surface;
 - component supervision socket;
+- checked-in generated triad modules under `src/schema/`, produced from
+  `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema` by
+  `schema-rust-next`. This substrate exposes the future Signal/Nexus/SEMA nouns
+  and generated two-listener daemon spine; live behavior still runs through the
+  transitional supervisor until the adapter cutover;
 - internal terminal-cell session actors;
 - visible viewer client;
 - raw input sender client;

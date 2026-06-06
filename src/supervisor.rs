@@ -502,8 +502,8 @@ impl TerminalSupervisor {
         request: TerminalRequest,
     ) -> Result<TerminalReply> {
         match request {
-            TerminalRequest::ListSessions(list) => return self.list_sessions(list),
-            TerminalRequest::ResolveSession(resolve) => return self.resolve_session(resolve),
+            TerminalRequest::ListSessions(list) => self.list_sessions(list),
+            TerminalRequest::ResolveSession(resolve) => self.resolve_session(resolve),
             other => self.forward_terminal_request(sequence, other),
         }
     }

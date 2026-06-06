@@ -56,6 +56,7 @@ crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
 nota-codec   = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
 nota-config  = { git = "https://github.com/LiGoldragon/nota-config.git", branch = "main" }
+nota-next    = { git = "https://github.com/LiGoldragon/nota-next.git", branch = "main", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
@@ -69,7 +70,15 @@ signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", 
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"
 tokio        = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+triad-runtime = { git = "https://github.com/LiGoldragon/triad-runtime.git", branch = "main" }
 vt100        = "0.16"
+
+[features]
+default = []
+nota-text = ["dep:nota-next"]
+
+[build-dependencies]
+schema-rust-next = { git = "https://github.com/LiGoldragon/schema-rust-next.git", branch = "main" }
 
 [lints.rust]
 unused = "warn"

@@ -122,7 +122,7 @@ struct CapturedBytes {
 
 impl CapturedBytes {
     fn from_hex(hex: &str) -> Result<Self> {
-        if hex.len() % 2 != 0 {
+        if !hex.len().is_multiple_of(2) {
             return Err(Error::ArtifactValidation {
                 detail: format!("hex payload has odd length: {}", hex.len()),
             });
@@ -249,7 +249,7 @@ impl<'arguments> CaptureValidatorArguments<'arguments> {
 
     fn required_path_option(&mut self, name: &str) -> Result<PathBuf> {
         self.expect_option_name(name)?;
-        self.required_value(name).map(PathBuf::from)
+        self.required_value(name)
     }
 
     fn required_string_option(&mut self, name: &str) -> Result<String> {
