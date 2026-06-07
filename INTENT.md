@@ -19,7 +19,10 @@ Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
 Nexus, and registry/prompt/lease/injection records at SEMA. The current
 `terminal-supervisor` path is still the active behavior path while the
-generated daemon module waits for the adapter cutover.
+generated daemon module waits for the adapter cutover. The transitional
+supervisor daemon starts from exactly one signal-encoded/rkyv
+`TerminalDaemonConfiguration` file and rejects inline NOTA and `.nota`
+startup files.
 
 ## Repo-scope only
 
@@ -57,9 +60,10 @@ stays in `signal-terminal/INTENT.md` and
   terminal Signal can only **read** the registry (`ListSessions`,
   `ResolveSession`).
 - **Inter-component traffic is Signal; NOTA renders only at edges.**
-  The single-argument NOTA rule governs the CLI and config surfaces;
-  the daemon's external surface is signal-frame frames. No NOTA on the
-  wire between components.
+  The single-argument NOTA rule governs CLI and human/agent text
+  surfaces; daemon startup configuration arrives as a signal-encoded
+  rkyv file. The daemon's external surface is signal-frame frames.
+  No NOTA on the wire between components.
 - **State-bearing runtime is actors, not shared mutable state.**
   `TerminalSignalControl` is a Kameo actor owning prompt-pattern
   registry, input-gate leases, and injection decisions; production

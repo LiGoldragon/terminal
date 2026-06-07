@@ -28,6 +28,10 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - `terminal-daemon` is the production component daemon. It binds a
   communication socket and a supervision socket, owns component Sema, and
   owns terminal session actors built on the `terminal_cell` library.
+- Daemon startup takes exactly one signal-encoded/rkyv
+  `TerminalDaemonConfiguration` file. Inline NOTA and `.nota`
+  configuration files are CLI/deploy-tool material and are rejected before
+  the daemon opens its runtime.
 - The owner terminal surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.

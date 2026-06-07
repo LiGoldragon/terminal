@@ -42,7 +42,10 @@ use terminal::supervisor::{
     TerminalSupervisorFrameCodec, TerminalSupervisorOwnerRequest,
 };
 use terminal::tables::{StoreLocation, TerminalTables};
-use terminal::{SocketMode, SupervisionFrameCodec};
+use terminal::{
+    SocketMode, SupervisionFrameCodec, TerminalDaemonConfigurationFile,
+    TerminalSupervisorDaemonCommand,
+};
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -464,14 +467,13 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 
 #[test]
 fn terminal_supervisor_answers_component_supervision_relation() {
-    use nota_codec::{Encoder, NotaEncode};
     use signal_persona::{SocketMode as WireSocketMode, WirePath};
     use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
     use signal_terminal::TerminalDaemonConfiguration;
 
     let fixture = SupervisorFixture::new("supervision");
     let supervision_socket = fixture.supervision_socket();
-    let configuration_path = fixture.root.join("terminal-daemon.nota");
+    let configuration_path = fixture.root.join("terminal-daemon.rkyv");
     let configuration = TerminalDaemonConfiguration {
         terminal_socket_path: WirePath::new(fixture.supervisor_socket().display().to_string()),
         terminal_socket_mode: WireSocketMode::new(0o600),
@@ -480,13 +482,9 @@ fn terminal_supervisor_answers_component_supervision_relation() {
         store_path: WirePath::new(fixture.store().as_path().display().to_string()),
         owner_identity: OwnerIdentity::UnixUser(UnixUserIdentifier::new(1000)),
     };
-    let mut encoder = Encoder::new();
-    configuration
-        .encode(&mut encoder)
-        .expect("encode terminal config");
-    let mut text = encoder.into_string();
-    text.push('\n');
-    fs::write(&configuration_path, text).expect("write terminal config");
+    TerminalDaemonConfigurationFile::new(&configuration_path)
+        .write_configuration(&configuration)
+        .expect("write terminal config");
 
     let mut child = Command::new(env!("CARGO_BIN_EXE_terminal-supervisor"))
         .arg(&configuration_path)
@@ -561,6 +559,24 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     ));
 
     stop_child(&mut child);
+}
+
+#[test]
+fn terminal_supervisor_configuration_rejects_nota_arguments() {
+    let fixture = SupervisorFixture::new("reject-nota-configuration");
+    fs::create_dir_all(&fixture.root).expect("fixture directory is created");
+    let nota_path = fixture.root.join("terminal-daemon.nota");
+    fs::write(&nota_path, "(TerminalDaemonConfiguration)").expect("write nota fixture");
+
+    let inline = TerminalSupervisorDaemonCommand::from_arguments(["(TerminalDaemonConfiguration)"])
+        .configuration()
+        .expect_err("inline NOTA is rejected");
+    let file = TerminalSupervisorDaemonCommand::from_arguments([nota_path.display().to_string()])
+        .configuration()
+        .expect_err(".nota file is rejected");
+
+    assert!(matches!(inline, terminal::Error::Argument(_)));
+    assert!(matches!(file, terminal::Error::Argument(_)));
 }
 
 #[test]

@@ -22,8 +22,6 @@ Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
 behind this same `terminal` owner and must not become a repository
 boundary.
 
----
-
 ## 0 · TL;DR
 
 This repo carries the Persona terminal communication plane. It does not
@@ -94,7 +92,8 @@ communication surface.
 **Supervision relation.** The engine-facing binary is
 `terminal-daemon`. It owns `signal-persona::SpawnEnvelope` handling
 and the `signal-persona::SupervisionRequest` answer surface. The daemon reads
-its typed configuration at startup, binds its communication and supervision
+its typed configuration from one signal-encoded/rkyv file at startup, rejects
+inline NOTA and `.nota` startup files, binds its communication and supervision
 sockets, starts its terminal session actors, and reports readiness only after
 those sockets and actors are available.
 

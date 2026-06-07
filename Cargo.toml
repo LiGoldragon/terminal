@@ -55,7 +55,6 @@ path = "src/bin/terminal-supervisor.rs"
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
 nota-codec   = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
-nota-config  = { git = "https://github.com/LiGoldragon/nota-config.git", branch = "main" }
 nota-next    = { git = "https://github.com/LiGoldragon/nota-next.git", branch = "main", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }

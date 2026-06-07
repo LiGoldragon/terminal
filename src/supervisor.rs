@@ -53,9 +53,8 @@ pub struct TerminalSupervisorDaemon {
 }
 
 impl TerminalSupervisorDaemon {
-    /// Canonical constructor — every production launch reads typed
-    /// `TerminalDaemonConfiguration` from argv via `nota-config` and
-    /// hands the record here.
+    /// Canonical constructor — production launch reads a binary
+    /// `TerminalDaemonConfiguration` and hands the decoded record here.
     pub fn from_configuration(configuration: TerminalDaemonConfiguration) -> Self {
         let supervision = SupervisionListener::new(
             SupervisionProfile::terminal(),

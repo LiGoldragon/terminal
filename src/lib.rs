@@ -1,6 +1,7 @@
 extern crate self as terminal;
 
 pub mod capture_validator;
+pub mod command;
 pub mod contract;
 pub mod error;
 pub mod pty;
@@ -24,6 +25,7 @@ pub mod schema {
     pub mod daemon;
 }
 
+pub use command::{TerminalDaemonConfigurationFile, TerminalSupervisorDaemonCommand};
 pub use error::{Error, Result};
 pub use socket::SocketMode;
 pub use supervision::{

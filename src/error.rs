@@ -10,11 +10,11 @@ pub enum Error {
     #[error("sema: {0}")]
     Sema(#[from] sema::Error),
 
-    #[error("nota-config: {0}")]
-    NotaConfig(#[from] nota_config::Error),
-
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_core::FrameError),
+
+    #[error("daemon argument: {0}")]
+    Argument(#[from] triad_runtime::ArgumentError),
 
     #[error("actor call: {detail}")]
     ActorCall { detail: String },
@@ -47,6 +47,24 @@ pub enum Error {
 
     #[error("PTY socket {path:?} did not become ready")]
     SocketNotReady { path: PathBuf },
+
+    #[error("failed to read terminal daemon configuration {path:?}: {source}")]
+    ConfigurationRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[error("failed to write terminal daemon configuration {path:?}: {source}")]
+    ConfigurationWrite {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[error("failed to decode terminal daemon configuration archive")]
+    ConfigurationArchiveDecode,
+
+    #[error("failed to encode terminal daemon configuration archive")]
+    ConfigurationArchiveEncode,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
