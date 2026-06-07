@@ -31,7 +31,7 @@ bytes.
 
 ```mermaid
 flowchart LR
-    harness["persona-harness"]
+    harness["harness"]
     terminal["terminal-daemon"]
     cell["TerminalCell actors"]
     viewer["visible viewer"]
@@ -45,7 +45,7 @@ flowchart LR
     cell --> child
 ```
 
-The component communication path (`persona-harness` → `terminal`) is
+The component communication path (`harness` → `terminal`) is
 typed Signal. Inside the component daemon, terminal sessions are data-bearing
 actors around `terminal-cell`. The data path (visible viewer ↔ session data
 socket ↔ terminal cell) is raw bytes.
@@ -61,8 +61,9 @@ socket ↔ terminal cell) is raw bytes.
 - checked-in generated triad modules under `src/schema/`, produced from
   `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema` by
   `schema-rust-next`. This substrate exposes the future Signal/Nexus/SEMA nouns
-  and generated two-listener daemon spine; live behavior still runs through the
-  transitional supervisor until the adapter cutover;
+  while the shared generated daemon spine waits for actor-native meta-listener
+  support; live behavior still runs through the transitional supervisor until
+  the adapter cutover;
 - internal terminal-cell session actors;
 - visible viewer client;
 - raw input sender client;
@@ -90,14 +91,14 @@ bytes flow viewer ↔ terminal-cell data path and do not cross either
 communication surface.
 
 **Supervision relation.** The engine-facing binary is
-`terminal-daemon`. It owns `signal-persona::SpawnEnvelope` handling
-and the `signal-persona::SupervisionRequest` answer surface. The daemon reads
+`terminal-daemon`. It owns `signal-engine-management::SpawnEnvelope` handling
+and the `signal-engine-management::Operation` answer surface. The daemon reads
 its typed configuration from one signal-encoded/rkyv file at startup, rejects
 inline NOTA and `.nota` startup files, binds its communication and supervision
 sockets, starts its terminal session actors, and reports readiness only after
 those sockets and actors are available.
 
-**Prompt-pattern lifecycle**. `persona-harness` registers a per-adapter
+**Prompt-pattern lifecycle**. `harness` registers a per-adapter
 `PromptPattern` with the supervisor at session-create time via
 `signal-terminal::RegisterPromptPattern`. The supervisor
 forwards the registration to the relevant terminal-cell `control.sock`; the cell
@@ -114,12 +115,12 @@ default: dirty state defers injection (`InjectionRejected { reason:
 DirtyPrompt }`); clean-then-inject machinery is deferred.
 
 **Message-landing endpoint.** The prototype's live message path terminates
-here. `persona-harness` calls `AcquireInputGate { pattern_id }` on
+here. `harness` calls `AcquireInputGate { pattern_id }` on
 `terminal` → the session actor returns `GateAcquired { lease,
-prompt_state }` → if `Clean`, harness calls `WriteInjection { lease, bytes,
-injection_sequence }` → the terminal cell writes bytes to the child PTY →
-returns `InjectionAck { sequence }` → terminal relays back through harness →
-router commits delivery. The bytes appear in the cell transcript; the
+prompt_state }` → if `Clean`, harness calls `WriteInjection { lease,
+bytes }` → the terminal cell writes bytes to the child PTY →
+returns `InjectionAck { generation, sequence }` → terminal relays back
+through harness → router commits delivery. The bytes appear in the cell transcript; the
 prototype's witness reads the transcript to verify the end-to-end path.
 
 ## 2 · State and Ownership
@@ -196,14 +197,14 @@ This repo owns:
 
 This repo does not own:
 
-- Persona messages (`persona-message`);
-- routing decisions (`persona-router`);
-- harness domain identity (`persona-harness`);
-- harness provider-usage interpretation (`persona-harness`);
-- OS focus policy (`persona-system`);
+- Persona messages (`message`);
+- routing decisions (`router`);
+- harness domain identity (`harness`);
+- harness provider-usage interpretation (`harness`);
+- OS focus policy (`system`);
 - authorization.
 
-`persona-harness` is a sibling engine component and a client of this repo's
+`harness` is a sibling engine component and a client of this repo's
 terminal contract. `terminal` is not a subcomponent of harness; the
 engine manager supervises both and pushes their peer socket paths at spawn.
 
@@ -318,7 +319,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
   PTY writer per cell; the input gate is the writer-side arbitrator.
 - Harness slash-command usage probes are harness-adapter behavior. The
   terminal owner may carry bytes such as `/usage\r`, but quota
-  interpretation belongs in `persona-harness` or a harness contract.
+  interpretation belongs in `harness` or a harness contract.
 
 ### 4.8 · Push and scope
 
@@ -469,6 +470,6 @@ scripts/dirty-prompt-defers-witness  stateful dirty-prompt rejection witness
 
 ## See Also
 
-- `../persona-harness/ARCHITECTURE.md`
-- `../persona-message/ARCHITECTURE.md`
-- `../persona-router/ARCHITECTURE.md`
+- `../harness/ARCHITECTURE.md`
+- `../message/ARCHITECTURE.md`
+- `../router/ARCHITECTURE.md`

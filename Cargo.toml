@@ -54,16 +54,15 @@ path = "src/bin/terminal-supervisor.rs"
 [dependencies]
 crossterm    = "0.28"
 kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
-nota-codec   = { git = "https://github.com/LiGoldragon/nota-codec.git", branch = "main" }
 nota-next    = { git = "https://github.com/LiGoldragon/nota-next.git", branch = "main", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema         = { git = "https://github.com/LiGoldragon/sema.git" }
 signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
+signal-engine-management = { git = "https://github.com/LiGoldragon/signal-engine-management.git", branch = "main" }
 signal-hook  = "0.3"
 owner-signal-terminal = { git = "https://github.com/LiGoldragon/owner-signal-terminal.git", branch = "main" }
-signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git" }
-signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-origin.git" }
+signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-origin.git", branch = "main" }
 signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"

@@ -13,15 +13,13 @@ use owner_signal_terminal::{
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
+use signal_engine_management::{
+    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion,
+    Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
+    Presence, Query as SupervisionQuery, Reply as SupervisionReply, WirePath,
+};
 use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Request as FrameRequest, SessionEpoch,
-};
-use signal_persona::engine_management::{
-    Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
-    Presence, Query as SupervisionQuery, Reply as SupervisionReply,
-};
-use signal_persona::{
-    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion, WirePath,
 };
 use signal_terminal::{
     ListSessions, PromptPattern, PromptPatternBytes, PromptPatternIdentifier,
@@ -463,7 +461,7 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 
 #[test]
 fn terminal_supervisor_answers_component_supervision_relation() {
-    use signal_persona::{SocketMode as WireSocketMode, WirePath};
+    use signal_engine_management::SocketMode as WireSocketMode;
     use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
     use signal_terminal::TerminalDaemonConfiguration;
 

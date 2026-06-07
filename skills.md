@@ -60,7 +60,7 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - Keep harness processes durable. Closing a viewer must not kill the child
   harness process.
 - Keep Persona message semantics out of this repo.
-- Keep `persona-harness` as a sibling client over `signal-terminal`;
+- Keep `harness` as a sibling client over `signal-terminal`;
   do not fold terminal ownership into the harness abstraction.
 - Keep attached keyboard input as a raw byte path. Control behavior uses
   typed socket or Signal requests; it does not use a prefix-key grammar in

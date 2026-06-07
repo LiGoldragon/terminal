@@ -18,9 +18,6 @@ pub mod schema {
     pub mod sema;
     #[rustfmt::skip]
     pub mod nexus;
-    #[rustfmt::skip]
-    #[allow(dead_code)]
-    pub mod daemon;
 }
 
 pub use command::{TerminalDaemonConfigurationFile, TerminalSupervisorDaemonCommand};

@@ -10,8 +10,8 @@ launch policy, and the component Sema metadata around `terminal-cell`.
 It is the boundary component that transports terminal bytes without
 interpreting their meaning. Paired with the contract repos
 `signal-terminal` (ordinary terminal transport vocabulary) and
-`owner-signal-terminal` (the currently named meta-only session
-lifecycle mutation crate).
+the terminal meta signal contract (currently still named
+`owner-signal-terminal` until the workspace repo rename lands).
 
 Terminal now carries the schema-derived triad substrate in-tree:
 `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema`
@@ -20,10 +20,10 @@ Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
 Nexus, and registry/prompt/lease/injection records at SEMA. The current
 `terminal-supervisor` path is still the active behavior path while the
-generated daemon module waits for the adapter cutover. The transitional
-supervisor daemon starts from exactly one signal-encoded/rkyv
-`TerminalDaemonConfiguration` file and rejects inline NOTA and `.nota`
-startup files.
+generated daemon cutover waits for the shared actor-native daemon emitter to
+support the meta listener tier. The transitional supervisor daemon starts
+from exactly one signal-encoded/rkyv `TerminalDaemonConfiguration` file
+and rejects inline NOTA and `.nota` startup files.
 
 ## Repo-scope only
 
@@ -49,7 +49,7 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   carries raw terminal input to the child PTY without Persona-message
   parsing, shell parsing, slash-command parsing, or provider-quota
   interpretation. Quota and harness-prompt meaning belong in
-  `persona-harness`; routing belongs in `router`; OS focus belongs in
+  `harness`; routing belongs in `router`; OS focus belongs in
   `system`; authorization is not owned here.
 - **Communication plane and data plane are separate sockets.** Ordinary
   `signal-terminal` frames flow on the component communication socket;

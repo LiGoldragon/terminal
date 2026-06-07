@@ -10,6 +10,7 @@ use owner_signal_terminal::{
     OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason,
 };
+use signal_engine_management::WirePath;
 use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
     StreamEventIdentifier, SubReply, SubscriptionTokenInner,
@@ -548,9 +549,7 @@ impl TerminalSupervisor {
             .into_iter()
             .map(|session| SessionEntry {
                 name: session.terminal().clone(),
-                data_socket_path: signal_persona::WirePath::new(
-                    session.data_socket_path().as_str(),
-                ),
+                data_socket_path: WirePath::new(session.data_socket_path().as_str()),
             })
             .collect();
         Ok(SessionList { entries }.into())
@@ -567,7 +566,7 @@ impl TerminalSupervisor {
         };
         Ok(SessionResolved {
             name: session.terminal().clone(),
-            data_socket_path: signal_persona::WirePath::new(session.data_socket_path().as_str()),
+            data_socket_path: WirePath::new(session.data_socket_path().as_str()),
         }
         .into())
     }
