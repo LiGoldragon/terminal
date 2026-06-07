@@ -6,7 +6,7 @@ embellished. Maintenance: `primary/skills/repo-intent.md`.*
 
 `terminal` is the Persona-facing terminal session owner: named terminal
 sessions, the typed Signal communication surface, the viewer-adapter
-launch policy, and the component Sema metadata around `terminal-cell`.
+launch policy, and the component SEMA metadata around `terminal-cell`.
 It is the boundary component that transports terminal bytes without
 interpreting their meaning. Paired with the contract repos
 `signal-terminal` (ordinary terminal transport vocabulary) and
@@ -40,8 +40,8 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   injection decisions — as one component daemon with internal
   data-bearing session actors around `terminal-cell`.
 - Make named terminal sessions durable component state recorded in the
-  component's Sema database, not in registry JSON, text manifests, or
-  viewer-specific state files.
+  component's `terminal.sema` database through `sema-engine`, not in
+  registry JSON, text manifests, or viewer-specific state files.
 
 ## Constraints
 

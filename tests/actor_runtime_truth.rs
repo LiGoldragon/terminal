@@ -167,9 +167,10 @@ fn terminal_registry_state_goes_through_component_sema() {
             .join("tables.rs"),
     );
 
-    assert!(manifest.contains("sema"));
-    assert!(tables_source.contains("Sema::open_with_schema"));
-    assert!(tables_source.contains("Table<&'static str, TerminalSessionObservation>"));
+    assert!(manifest.contains("sema-engine"));
+    assert!(tables_source.contains("Engine::open"));
+    assert!(tables_source.contains("KeyedAssertion"));
+    assert!(tables_source.contains("TerminalSessionObservation"));
     assert!(!tables_source.contains("StoredTerminalSession"));
     assert!(!tables_source.contains("registry.json"));
     assert!(!tables_source.contains("sessions.json"));

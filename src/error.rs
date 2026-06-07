@@ -7,8 +7,8 @@ pub enum Error {
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("sema: {0}")]
-    Sema(#[from] sema::Error),
+    #[error("sema engine: {0}")]
+    SemaEngine(#[from] sema_engine::Error),
 
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_frame::FrameError),

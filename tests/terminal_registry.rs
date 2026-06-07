@@ -54,6 +54,28 @@ impl Drop for RegistryFixture {
 }
 
 #[test]
+fn terminal_tables_register_contract_record_families_in_sema_engine() {
+    let fixture = RegistryFixture::new("engine-catalog");
+    let mut table_names = fixture.tables().registered_table_names();
+    table_names.sort();
+
+    assert_eq!(
+        table_names,
+        [
+            "delivery_attempts",
+            "session_archive",
+            "session_health",
+            "sessions",
+            "terminal_events",
+            "viewer_attachments",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn terminal_sessions_are_component_sema_records() {
     let fixture = RegistryFixture::new("component-sema-records");
     let tables = fixture.tables();

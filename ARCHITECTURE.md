@@ -4,9 +4,11 @@
 communication socket, one supervision socket, many internal terminal cells.*
 
 `terminal` owns the Persona-facing surface around named terminal
-sessions: typed Signal communication, component Sema registry, session
+sessions: typed Signal communication, component SEMA registry, session
 metadata, viewer-adapter launch policy, and the internal terminal-cell actors
-that own child PTYs. The component boundary exposes a **communication socket**
+that own child PTYs. The durable registry is opened through
+`sema-engine`, not directly through the storage kernel. The component
+boundary exposes a **communication socket**
 for `signal-terminal` traffic and a **supervision socket** for engine
 lifecycle/readiness. Those two sockets are distinct; "control" is not used as
 the component-boundary contrast with supervision.
@@ -73,7 +75,7 @@ socket ↔ terminal cell) is raw bytes.
 - terminal-cell library adapter;
 - terminal Signal control actor for prompt patterns, input-gate leases,
   prompt-state checks, and injection decisions;
-- component Sema table for named terminal sessions;
+- component `sema-engine` tables for named terminal sessions;
 - read-only session inspection CLIs;
 - `signal-terminal` request/event adapter.
 - terminal meta signal session-lifecycle adapter.
@@ -107,7 +109,7 @@ harness identity. Later `AcquireInputGate { pattern_id }` requests reference
 that id.
 
 **Gate-and-acquire execution.** When the daemon receives `AcquireInputGate`,
-it resolves the named session in component Sema, asks that session's terminal
+it resolves the named session in component SEMA, asks that session's terminal
 cell to acquire the gate, awaits the typed `GateAcquired { lease,
 prompt_state }` reply, and relays it. The `prompt_state` carries `Clean |
 Dirty | NotChecked` per `signal-terminal::PromptState`. Prototype
@@ -130,13 +132,14 @@ clients. Closing a viewer does not kill the harness.
 
 The production `terminal` supervisor owns the registry around terminal
 cells: named sessions, session health, socket paths, viewer attachments, and
-Sema-backed durable terminal metadata. The low-level `terminal-cell` session
+SEMA-backed durable terminal metadata. The low-level `terminal-cell` session
 owns one child process group and one PTY. The supervisor chooses and launches
 viewer adapters; the adapters draw windows and forward raw terminal bytes over
 the cell's `data.sock`.
 
-The current daemon writes a named session record into the component Sema after
-the terminal-cell sockets are bound. The `terminal-sessions` and
+The current daemon writes a named session record into component SEMA through
+`TerminalTables` after the terminal-cell sockets are bound. The
+`terminal-sessions` and
 `terminal-resolve` binaries are read-only inspection clients for that
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
@@ -148,7 +151,7 @@ to a terminal communication socket, and renders the resulting terminal event.
 The target runtime ships one component daemon:
 
 `terminal-daemon` is the **component daemon**. It binds the component
-communication socket and supervision socket, owns component Sema, starts
+communication socket and supervision socket, owns component SEMA, starts
 data-bearing terminal session actors, and embeds the `terminal_cell` library
 for each child PTY. The terminal meta signal `CreateSession` mutates
 the component registry and starts a terminal session actor.
@@ -162,9 +165,9 @@ The current implementation still contains transitional binaries whose behavior
 is being folded into that daemon:
 
 - `terminal-daemon` currently owns one PTY and writes a
-  `SessionRegistration` into component Sema for tests.
+  `SessionRegistration` into component SEMA for tests.
 - `terminal-supervisor` currently binds the engine-facing Signal
-  socket, answers supervision traffic, resolves sessions from component Sema,
+  socket, answers supervision traffic, resolves sessions from component SEMA,
   and forwards requests to registered cells.
 
 Those transitional binaries are implementation stepping stones. The durable
@@ -208,12 +211,13 @@ This repo does not own:
 terminal contract. `terminal` is not a subcomponent of harness; the
 engine manager supervises both and pushes their peer socket paths at spawn.
 
-Production registry state lives in `terminal`'s component Sema, not in
+Production registry state lives in `terminal`'s component SEMA, not in
 viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
 remains a convenience cache; the typed terminal registry is the durable source
 of truth. The table value record shapes for inspectable terminal state are
-owned by `signal-terminal`'s introspection module; this component owns
-the Sema store, table declarations, write sequencing, and read consistency.
+owned by `signal-terminal`'s introspection module; this component owns the
+`sema-engine` table registrations, explicit record keys, write sequencing, and
+read consistency.
 
 ## 4 · Constraints
 
@@ -233,7 +237,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 - `terminal` owns the component communication plane. Ordinary typed
   Signal frames flow over the component communication socket.
-- Owner-only session lifecycle frames flow over the owner terminal surface.
+- Meta-only session lifecycle frames flow over the terminal meta surface.
   The ordinary `signal-terminal` surface does not know
   `CreateSession` or `RetireSession`.
 - Raw attached-viewer bytes flow viewer ↔ session data socket ↔ terminal
@@ -254,7 +258,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 ### 4.3 · Component daemon and transitional binaries
 
 - `terminal-daemon` is the production component daemon. It binds a
-  communication socket and a supervision socket, owns component Sema, and
+  communication socket and a supervision socket, owns component SEMA, and
   owns all terminal session actors.
 - `terminal-supervisor` is transitional code being folded into the
   component daemon. Its tests remain useful because they prove registry
@@ -280,21 +284,21 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 ### 4.5 · Wire and registry
 
 - Named terminal sessions are component state. The daemon records them in
-  `terminal`'s component Sema; no registry JSON, text manifest, or
+  `terminal`'s component SEMA; no registry JSON, text manifest, or
   viewer-specific state file is the source of truth.
 - Session lifecycle mutation is accepted only through
   the terminal meta signal contract; ordinary terminal Signal can only read
   the registry with `ListSessions` and `ResolveSession`.
-- The supervisor socket resolves terminal names through component Sema
+- The supervisor socket resolves terminal names through component SEMA
   before terminal effects. Callers send `signal-terminal` frames to
   `terminal`, not directly to stored terminal-cell sockets.
 - Supervisor-request state is committed around the terminal effect:
   `delivery_attempts` before forwarding, `terminal_events` after the typed
   event returns. Viewer attachments, session health, and session archive
-  records are first-class component Sema tables.
+  records are first-class component SEMA tables.
 - Session registration records both the named terminal session (with typed
   control and data socket paths) and the ready-state session-health row in
-  component Sema.
+  component SEMA.
 
 ### 4.6 · Subscriptions
 
@@ -413,7 +417,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 - **Communication socket routing**: send one `signal-terminal`
   request to the transitional supervisor socket, prove it resolves the named session
-  through component Sema, forwards the frame to the registered terminal
+  through component SEMA, forwards the frame to the registered terminal
   control socket, records the delivery attempt and terminal event, and
   returns the typed terminal event. Exposed as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
@@ -427,7 +431,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
   and persists both typed events.
 - **Spawn-envelope startup**: construct `terminal-supervisor`
   without CLI path arguments and prove it resolves its socket and
-  component Sema path from `PERSONA_SOCKET_PATH` and
+  component SEMA path from `PERSONA_SOCKET_PATH` and
   `PERSONA_STATE_PATH`.
 - **Supervisor socket mode**: bind `terminal-supervisor` with an
   explicit managed socket mode and prove the real Unix socket metadata
@@ -451,7 +455,7 @@ src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-terminal adapter
 src/signal_control.rs              Kameo actor for prompt/gate/injection control state
 src/supervisor.rs                  engine-facing Signal supervisor socket and owner-terminal request surface
-src/tables.rs                      component Sema tables over signal-terminal introspection records
+src/tables.rs                      sema-engine tables over signal-terminal introspection records
 src/registry.rs                    session registration + inspection clients
 src/capture_validator.rs           structured validator for signal-capture TSV artifacts
 src/bin/terminal-daemon.rs  current one-PTY daemon entry; consolidating into component daemon
