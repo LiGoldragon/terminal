@@ -22,12 +22,18 @@ messages.
 
 ## Named sessions
 
+`terminal-supervisor <terminal-daemon.rkyv>` is the current engine-facing
+component socket during the consolidation. The rkyv configuration carries the
+communication socket, supervision socket, socket modes, store path, and owner
+identity. Inline NOTA and `.nota` startup files are rejected by the daemon.
+
 `terminal-daemon --store <terminal.sema> --name <terminal>
 --control-socket <control.sock> --data-socket <data.sock> -- <command>
-[args...]` starts a terminal cell and records the named session (pointing at
-the control socket) in the component Sema database after both sockets are
-bound. The control socket carries Signal frames and the byte-tag CLI
-protocol; the data socket carries the attached-viewer raw byte stream.
+[args...]` is the transitional one-PTY terminal-cell witness. It starts a
+terminal cell and records the named session (pointing at the control socket)
+in the component Sema database after both sockets are bound. The control
+socket carries Signal frames and the byte-tag CLI protocol; the data socket
+carries the attached-viewer raw byte stream.
 
 `terminal-sessions --store <terminal.sema>` prints the registered
 sessions. `terminal-resolve --store <terminal.sema> <terminal>` prints

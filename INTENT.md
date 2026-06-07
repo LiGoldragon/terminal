@@ -20,10 +20,14 @@ Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
 Nexus, and registry/prompt/lease/injection records at SEMA. The current
 `terminal-supervisor` path is still the active behavior path while the
-generated daemon cutover waits for the shared actor-native daemon emitter to
-support the meta listener tier. The transitional supervisor daemon starts
-from exactly one signal-encoded/rkyv `TerminalDaemonConfiguration` file
-and rejects inline NOTA and `.nota` startup files.
+generated daemon cutover waits for the adapter that preserves the external
+`signal-terminal` plus terminal meta signal contracts while routing into the
+generated triad nouns. The shared actor-native daemon emitter already has a
+meta listener tier; the remaining work is supervisor-to-component
+consolidation and relation adaptation, not socket-tier substrate. The
+transitional supervisor daemon starts from exactly one signal-encoded/rkyv
+`TerminalDaemonConfiguration` file and rejects inline NOTA and `.nota`
+startup files.
 
 ## Repo-scope only
 

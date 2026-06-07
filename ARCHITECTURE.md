@@ -63,9 +63,11 @@ socket ↔ terminal cell) is raw bytes.
 - checked-in generated triad modules under `src/schema/`, produced from
   `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema` by
   `schema-rust-next`. This substrate exposes the future Signal/Nexus/SEMA nouns
-  while the shared generated daemon spine waits for actor-native meta-listener
-  support; live behavior still runs through the transitional supervisor until
-  the adapter cutover;
+  while live behavior still runs through the transitional supervisor until the
+  adapter cutover. The generated daemon substrate has meta-listener support;
+  terminal's remaining generated-daemon blocker is preserving the external
+  `signal-terminal` and terminal meta signal contracts while routing into the
+  local triad nouns;
 - internal terminal-cell session actors;
 - visible viewer client;
 - raw input sender client;
