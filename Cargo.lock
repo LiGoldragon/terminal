@@ -493,11 +493,11 @@ dependencies = [
 [[package]]
 name = "owner-signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/owner-signal-terminal.git?branch=main#40de96f365ab1ac049b1141754f0b59fc959d323"
+source = "git+https://github.com/LiGoldragon/owner-signal-terminal.git?branch=main#2594a0b551f1a84b88dcdd900a65115bc81895a7"
 dependencies = [
  "nota-codec",
  "rkyv",
- "signal-core",
+ "signal-frame",
  "signal-persona",
  "signal-terminal",
  "thiserror 2.0.18",
@@ -883,27 +883,6 @@ name = "shell-words"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
-
-[[package]]
-name = "signal-core"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#3f10055aa281aa3e5c8c38312f961516e4470ad3"
-dependencies = [
- "nota-codec",
- "rkyv",
- "signal-core-macros",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "signal-core-macros"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-core.git#3f10055aa281aa3e5c8c38312f961516e4470ad3"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "signal-engine-management"
