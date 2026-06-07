@@ -5,13 +5,13 @@ pub type Integer = u64;
 pub type Boolean = bool;
 pub type Path = std::string::String;
 
-pub use terminal::schema::signal::SessionName as SessionName;
-pub use terminal::schema::signal::SessionRecord as SessionRecord;
-pub use terminal::schema::signal::PromptPatternRegistration as PromptPatternRegistration;
-pub use terminal::schema::signal::InputGateLease as InputGateLease;
-pub use terminal::schema::signal::InjectionReceipt as InjectionReceipt;
-pub use terminal::schema::signal::TranscriptCapture as TranscriptCapture;
-pub use terminal::schema::signal::ErrorReport as ErrorReport;
+pub use crate::schema::signal::SessionName as SessionName;
+pub use crate::schema::signal::SessionRecord as SessionRecord;
+pub use crate::schema::signal::PromptPatternRegistration as PromptPatternRegistration;
+pub use crate::schema::signal::InputGateLease as InputGateLease;
+pub use crate::schema::signal::InjectionReceipt as InjectionReceipt;
+pub use crate::schema::signal::TranscriptCapture as TranscriptCapture;
+pub use crate::schema::signal::ErrorReport as ErrorReport;
 
 #[cfg(feature = "nota-text")]
 pub use nota_next::{NotaDecode, NotaDecodeError, NotaEncode, NotaSource};

@@ -1,5 +1,3 @@
-extern crate self as terminal;
-
 pub mod capture_validator;
 pub mod command;
 pub mod contract;

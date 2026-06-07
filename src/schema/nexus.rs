@@ -5,20 +5,20 @@ pub type Integer = u64;
 pub type Boolean = bool;
 pub type Path = std::string::String;
 
-pub use terminal::schema::signal::Input as SignalInput;
-pub use terminal::schema::signal::Output as SignalOutput;
-pub use terminal::schema::signal::SessionName as SessionName;
-pub use terminal::schema::signal::SessionRecord as SessionRecord;
-pub use terminal::schema::signal::SessionResolution as SessionResolution;
-pub use terminal::schema::signal::PromptPatternRegistration as PromptPatternRegistration;
-pub use terminal::schema::signal::InputGateLease as InputGateLease;
-pub use terminal::schema::signal::InjectionReceipt as InjectionReceipt;
-pub use terminal::schema::signal::TranscriptCapture as TranscriptCapture;
-pub use terminal::schema::signal::ErrorReport as ErrorReport;
-pub use terminal::schema::sema::WriteInput as SemaWriteInput;
-pub use terminal::schema::sema::ReadInput as SemaReadInput;
-pub use terminal::schema::sema::WriteOutput as SemaWriteOutput;
-pub use terminal::schema::sema::ReadOutput as SemaReadOutput;
+pub use crate::schema::signal::Input as SignalInput;
+pub use crate::schema::signal::Output as SignalOutput;
+pub use crate::schema::signal::SessionName as SessionName;
+pub use crate::schema::signal::SessionRecord as SessionRecord;
+pub use crate::schema::signal::SessionResolution as SessionResolution;
+pub use crate::schema::signal::PromptPatternRegistration as PromptPatternRegistration;
+pub use crate::schema::signal::InputGateLease as InputGateLease;
+pub use crate::schema::signal::InjectionReceipt as InjectionReceipt;
+pub use crate::schema::signal::TranscriptCapture as TranscriptCapture;
+pub use crate::schema::signal::ErrorReport as ErrorReport;
+pub use crate::schema::sema::WriteInput as SemaWriteInput;
+pub use crate::schema::sema::ReadInput as SemaReadInput;
+pub use crate::schema::sema::WriteOutput as SemaWriteOutput;
+pub use crate::schema::sema::ReadOutput as SemaReadOutput;
 
 #[cfg(feature = "nota-text")]
 pub use nota_next::{NotaDecode, NotaDecodeError, NotaEncode, NotaSource};
