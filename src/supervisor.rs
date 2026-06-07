@@ -10,9 +10,9 @@ use owner_signal_terminal::{
     OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason,
 };
-use signal_core::{
+use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
-    SignalVerb, StreamEventIdentifier, SubReply, SubscriptionTokenInner,
+    StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
 use signal_terminal::{
     ResolveSession, SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
@@ -317,10 +317,19 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn read_request(&self, reader: &mut impl Read) -> Result<TerminalRequest> {
         match self.read_frame(reader)?.into_body() {
-            FrameBody::Request { request, .. } => request
-                .into_checked()
-                .map_err(|(reason, _)| Error::InvalidSignalRequest { reason })
-                .map(|checked| checked.operations.into_head().payload),
+            FrameBody::Request { request, .. } => {
+                let (payload, tail) = request.payloads.into_head_and_tail();
+                if tail.is_empty() {
+                    Ok(payload)
+                } else {
+                    Err(Error::UnexpectedSignalFrame {
+                        got: format!(
+                            "expected one signal request payload, got {}",
+                            tail.len() + 1
+                        ),
+                    })
+                }
+            }
             other => Err(Error::UnexpectedSignalFrame {
                 got: format!("{other:?}"),
             }),
@@ -345,10 +354,7 @@ impl TerminalSupervisorFrameCodec {
     pub fn write_reply(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
         let frame = TerminalFrame::new(FrameBody::Reply {
             exchange: synthetic_exchange(),
-            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
-                verb: SignalVerb::Subscribe,
-                payload: event,
-            })),
+            reply: Reply::committed(NonEmpty::single(SubReply::Ok(event))),
         });
         let bytes = frame.encode_length_prefixed()?;
         writer.write_all(&bytes)?;
@@ -376,7 +382,7 @@ impl TerminalSupervisorFrameCodec {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
-                    SubReply::Ok { payload, .. } => Ok(payload),
+                    SubReply::Ok(payload) => Ok(payload),
                     other => Err(Error::UnexpectedSignalFrame {
                         got: format!("{other:?}"),
                     }),
@@ -404,9 +410,7 @@ impl TerminalSupervisorFrameCodec {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
-                    SubReply::Ok { payload, .. } => {
-                        Ok(TerminalSupervisorSignalOutput::Reply(payload))
-                    }
+                    SubReply::Ok(payload) => Ok(TerminalSupervisorSignalOutput::Reply(payload)),
                     other => Err(Error::UnexpectedSignalFrame {
                         got: format!("{other:?}"),
                     }),

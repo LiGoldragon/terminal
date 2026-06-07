@@ -22,15 +22,15 @@ messages.
 
 ## Named sessions
 
-`terminal-daemon --store <terminal.redb> --name <terminal>
+`terminal-daemon --store <terminal.sema> --name <terminal>
 --control-socket <control.sock> --data-socket <data.sock> -- <command>
 [args...]` starts a terminal cell and records the named session (pointing at
 the control socket) in the component Sema database after both sockets are
 bound. The control socket carries Signal frames and the byte-tag CLI
 protocol; the data socket carries the attached-viewer raw byte stream.
 
-`terminal-sessions --store <terminal.redb>` prints the registered
-sessions. `terminal-resolve --store <terminal.redb> <terminal>` prints
+`terminal-sessions --store <terminal.sema>` prints the registered
+sessions. `terminal-resolve --store <terminal.sema> <terminal>` prints
 the socket path for one registered session. These are read-only inspection
 clients for testing and operations; effect-bearing input and capture still go
 through the terminal socket.
@@ -44,8 +44,8 @@ so it is exposed as a flake app rather than a pure builder check.
 
 `terminal-signal --control-socket <control.sock> --terminal <terminal> connect`
 builds a `signal-terminal` request, round-trips it through a
-`signal-core` frame, sends it through the Persona terminal transport binding,
-round-trips the returned event through a `signal-core` reply frame, and prints
+`signal-frame` frame, sends it through the Persona terminal transport binding,
+round-trips the returned event through a `signal-frame` reply frame, and prints
 one event line.
 
 `nix run .#test-terminal-signal` starts a real terminal-cell-backed

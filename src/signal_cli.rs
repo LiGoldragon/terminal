@@ -2,9 +2,9 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_core::{
+use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
-    SignalVerb, SubReply,
+    SubReply,
 };
 use signal_terminal::{
     AcquireInputGate, GateAcquired, GateBusy, GateReleased, InjectionAck, InjectionRejected,
@@ -321,10 +321,19 @@ impl TerminalSignalRequestFrame {
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
-            FrameBody::Request { request, .. } => request
-                .into_checked()
-                .map_err(|(reason, _)| Error::InvalidSignalRequest { reason })
-                .map(|checked| checked.operations.into_head().payload),
+            FrameBody::Request { request, .. } => {
+                let (payload, tail) = request.payloads.into_head_and_tail();
+                if tail.is_empty() {
+                    Ok(payload)
+                } else {
+                    Err(Error::InvalidArgument {
+                        detail: format!(
+                            "expected one signal request payload, got {}",
+                            tail.len() + 1
+                        ),
+                    })
+                }
+            }
             other => Err(Error::InvalidArgument {
                 detail: format!("unexpected signal request frame: {other:?}"),
             }),
@@ -344,17 +353,14 @@ impl TerminalSignalEventFrame {
     fn into_event(self) -> Result<TerminalReply> {
         let frame = Frame::new(FrameBody::Reply {
             exchange: synthetic_exchange(),
-            reply: Reply::completed(NonEmpty::single(SubReply::Ok {
-                verb: SignalVerb::Subscribe,
-                payload: self.event,
-            })),
+            reply: Reply::committed(NonEmpty::single(SubReply::Ok(self.event))),
         });
         let bytes = frame.encode_length_prefixed()?;
         let decoded = Frame::decode_length_prefixed(&bytes)?;
         match decoded.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
-                    SubReply::Ok { payload, .. } => Ok(payload),
+                    SubReply::Ok(payload) => Ok(payload),
                     other => Err(Error::InvalidArgument {
                         detail: format!("unexpected signal sub-reply: {other:?}"),
                     }),

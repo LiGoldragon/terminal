@@ -10,9 +10,9 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - This repo owns the component communication plane. Typed Signal flows over
   `terminal`'s communication socket; supervision uses a separate
   supervision socket.
-- Ordinary terminal Signal uses `signal-terminal`. Owner-only
-  session lifecycle mutation uses `owner-signal-terminal`; do not
-  put `CreateSession` / `RetireSession` back into the ordinary contract.
+- Ordinary terminal Signal uses `signal-terminal`. Meta-only session
+  lifecycle mutation uses the terminal meta signal contract; do not put
+  `CreateSession` / `RetireSession` back into the ordinary contract.
 - Raw viewer bytes flow viewer ↔ session data path directly. They do not
   cross the component communication socket.
 - The Sema session registry records two typed fields per cell:
@@ -32,7 +32,7 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
   `TerminalDaemonConfiguration` file. Inline NOTA and `.nota`
   configuration files are CLI/deploy-tool material and are rejected before
   the daemon opens its runtime.
-- The owner terminal surface is part of the same component owner. It is not
+- The terminal meta surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.
 - `terminal-supervisor` and the old one-PTY `terminal-daemon`

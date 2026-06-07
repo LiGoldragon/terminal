@@ -10,7 +10,8 @@ launch policy, and the component Sema metadata around `terminal-cell`.
 It is the boundary component that transports terminal bytes without
 interpreting their meaning. Paired with the contract repos
 `signal-terminal` (ordinary terminal transport vocabulary) and
-`owner-signal-terminal` (owner-only session lifecycle mutation).
+`owner-signal-terminal` (the currently named meta-only session
+lifecycle mutation crate).
 
 Terminal now carries the schema-derived triad substrate in-tree:
 `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema`
@@ -28,8 +29,9 @@ startup files.
 
 This file carries daemon-side intent for `terminal`. Wire vocabulary
 stays in `signal-terminal/INTENT.md` and
-`owner-signal-terminal/INTENT.md`. Workspace-shape intent stays in
-`primary/INTENT.md`. The low-level PTY primitive is `terminal-cell`.
+the terminal meta signal contract's `INTENT.md`. Workspace-shape intent
+stays in `primary/INTENT.md`. The low-level PTY primitive is
+`terminal-cell`.
 
 ## Goals
 
@@ -55,8 +57,8 @@ stays in `signal-terminal/INTENT.md` and
   `terminal-cell` and never traverse the communication socket. A single
   socket that changes role by mode, message kind, or connection phase
   is not a valid shape.
-- **Session-lifecycle mutation is owner-only.** `CreateSession` and
-  `RetireSession` arrive only through `owner-signal-terminal`; ordinary
+- **Session-lifecycle mutation is meta-only.** `CreateSession` and
+  `RetireSession` arrive only through the terminal meta signal contract; ordinary
   terminal Signal can only **read** the registry (`ListSessions`,
   `ResolveSession`).
 - **Inter-component traffic is Signal; NOTA renders only at edges.**
@@ -88,5 +90,5 @@ stays in `signal-terminal/INTENT.md` and
   lifecycle, gate-and-acquire execution, registry tables, witnesses.
 - `../terminal-cell/INTENT.md` — the low-level PTY/transcript cell.
 - `../signal-terminal/INTENT.md` — ordinary terminal transport contract.
-- `../owner-signal-terminal/INTENT.md` — owner-only session lifecycle.
+- terminal meta signal contract — meta-only session lifecycle.
 - `primary/skills/component-triad.md` — triad structure and wire layers.

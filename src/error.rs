@@ -11,7 +11,7 @@ pub enum Error {
     Sema(#[from] sema::Error),
 
     #[error("signal frame: {0}")]
-    SignalFrame(#[from] signal_core::FrameError),
+    SignalFrame(#[from] signal_frame::FrameError),
 
     #[error("daemon argument: {0}")]
     Argument(#[from] triad_runtime::ArgumentError),
@@ -33,7 +33,7 @@ pub enum Error {
 
     #[error("signal request failed structural checks: {reason}")]
     InvalidSignalRequest {
-        reason: signal_core::RequestRejectionReason,
+        reason: signal_frame::RequestRejectionReason,
     },
 
     #[error("unknown terminal session: {terminal}")]

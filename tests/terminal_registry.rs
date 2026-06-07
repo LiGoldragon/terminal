@@ -27,7 +27,7 @@ impl RegistryFixture {
             Self::stamp()
         ));
         fs::create_dir_all(&root).expect("registry fixture directory is created");
-        let store = StoreLocation::new(root.join("terminal.redb"));
+        let store = StoreLocation::new(root.join("terminal.sema"));
         Self { root, store }
     }
 

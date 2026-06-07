@@ -56,7 +56,7 @@ socket ↔ terminal cell) is raw bytes.
 
 - consolidated component daemon;
 - component communication socket;
-- owner-only terminal communication surface;
+- meta-only terminal communication surface;
 - component supervision socket;
 - checked-in generated triad modules under `src/schema/`, produced from
   `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema` by
@@ -75,7 +75,7 @@ socket ↔ terminal cell) is raw bytes.
 - component Sema table for named terminal sessions;
 - read-only session inspection CLIs;
 - `signal-terminal` request/event adapter.
-- `owner-signal-terminal` session-lifecycle adapter.
+- terminal meta signal session-lifecycle adapter.
 
 ## 1.5 · Supervision relation, prompt-pattern lifecycle, gate forwarding, message landing
 
@@ -83,9 +83,9 @@ socket ↔ terminal cell) is raw bytes.
 terminal Signal frames (`ResolveSession`, `RegisterPromptPattern`,
 `AcquireInputGate`, `WriteInjection`, `ReleaseInputGate`, subscription
 frames, `TerminalCapture`, and the rest of `signal-terminal`) on its
-component communication socket. Owner-only session lifecycle frames
-(`CreateSession`, `RetireSession`) use `owner-signal-terminal`
-and are accepted only on the owner terminal surface. Raw attached-viewer
+component communication socket. Meta-only session lifecycle frames
+(`CreateSession`, `RetireSession`) use the terminal meta signal contract
+and are accepted only on the meta terminal surface. Raw attached-viewer
 bytes flow viewer ↔ terminal-cell data path and do not cross either
 communication surface.
 
@@ -149,12 +149,12 @@ The target runtime ships one component daemon:
 `terminal-daemon` is the **component daemon**. It binds the component
 communication socket and supervision socket, owns component Sema, starts
 data-bearing terminal session actors, and embeds the `terminal_cell` library
-for each child PTY. `owner-signal-terminal::CreateSession` mutates
+for each child PTY. The terminal meta signal `CreateSession` mutates
 the component registry and starts a terminal session actor.
 `signal-terminal::ListSessions` and
 `signal-terminal::ResolveSession` read the component registry and
 return the data-socket attachment path.
-`owner-signal-terminal::RetireSession` removes a session through the
+The terminal meta signal `RetireSession` removes a session through the
 same component owner.
 
 The current implementation still contains transitional binaries whose behavior
@@ -212,7 +212,7 @@ viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
 remains a convenience cache; the typed terminal registry is the durable source
 of truth. The table value record shapes for inspectable terminal state are
 owned by `signal-terminal`'s introspection module; this component owns
-the redb file, table declarations, write sequencing, and read consistency.
+the Sema store, table declarations, write sequencing, and read consistency.
 
 ## 4 · Constraints
 
@@ -282,7 +282,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
   `terminal`'s component Sema; no registry JSON, text manifest, or
   viewer-specific state file is the source of truth.
 - Session lifecycle mutation is accepted only through
-  `owner-signal-terminal`; ordinary terminal Signal can only read
+  the terminal meta signal contract; ordinary terminal Signal can only read
   the registry with `ListSessions` and `ResolveSession`.
 - The supervisor socket resolves terminal names through component Sema
   before terminal effects. Callers send `signal-terminal` frames to
@@ -416,10 +416,9 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
   control socket, records the delivery attempt and terminal event, and
   returns the typed terminal event. Exposed as
   `nix flake check .#terminal-supervisor-socket-routes-through-component-sema`.
-- **Owner surface separation**: send an
-  `owner-signal-terminal::CreateSession` through the
-  supervisor's owner request path and prove it reaches the owner surface as
-  an owner request, not an ordinary `signal-terminal` variant.
+- **Meta surface separation**: send a terminal meta signal `CreateSession`
+  through the supervisor's meta request path and prove it reaches the meta
+  surface, not an ordinary `signal-terminal` variant.
 - **Supervisor subscription routing**: send
   `SubscribeTerminalWorkerLifecycle` to the supervisor socket, prove it
   records the attempt, relays an initial lifecycle snapshot and a

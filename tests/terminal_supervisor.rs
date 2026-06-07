@@ -13,13 +13,8 @@ use owner_signal_terminal::{
     OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
-use signal_core::{
-    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Operation, Request,
-    RequestRejectionReason, SessionEpoch, SignalVerb,
-};
 use signal_frame::{
-    ExchangeIdentifier as FrameExchangeIdentifier, ExchangeLane as FrameExchangeLane,
-    LaneSequence as FrameLaneSequence, Request as FrameRequest, SessionEpoch as FrameSessionEpoch,
+    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Request as FrameRequest, SessionEpoch,
 };
 use signal_persona::engine_management::{
     Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
@@ -62,7 +57,7 @@ impl SupervisorFixture {
             Self::stamp()
         ));
         fs::create_dir_all(&root).expect("supervisor fixture directory is created");
-        let store = StoreLocation::new(root.join("terminal.redb"));
+        let store = StoreLocation::new(root.join("terminal.sema"));
         Self { root, store }
     }
 
@@ -156,15 +151,21 @@ fn terminal_supervisor_daemon_applies_spawn_envelope_socket_mode() {
 }
 
 #[test]
-fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
-    let request = Request::from_operations(NonEmpty::single(Operation::new(
-        SignalVerb::Match,
+fn terminal_supervisor_frame_codec_rejects_multi_payload_request() {
+    let request = FrameRequest::from_payloads(NonEmpty::from_head_and_tail(
         RegisterPromptPattern {
             terminal: TerminalName::new("operator"),
             pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"ready> ".to_vec())),
         }
         .into(),
-    )));
+        vec![
+            RegisterPromptPattern {
+                terminal: TerminalName::new("operator"),
+                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"again> ".to_vec())),
+            }
+            .into(),
+        ],
+    ));
     let frame = TerminalFrame::new(FrameBody::Request {
         exchange: test_exchange(),
         request,
@@ -175,15 +176,10 @@ fn terminal_supervisor_frame_codec_rejects_mismatched_signal_verb() {
         .read_request(&mut input)
         .expect_err("mismatched verb is rejected");
 
-    match error {
-        terminal::Error::InvalidSignalRequest { reason } => {
-            assert_eq!(
-                reason,
-                RequestRejectionReason::VerbPayloadMismatch { index: 0 }
-            );
-        }
-        other => panic!("expected typed signal request rejection, got {other:?}"),
-    }
+    assert!(
+        matches!(error, terminal::Error::UnexpectedSignalFrame { .. }),
+        "multi-payload request is rejected as a structural frame mismatch: {error:?}"
+    );
 }
 
 #[test]
@@ -426,7 +422,7 @@ fn terminal_supervisor_owner_request_reaches_owner_surface_without_ordinary_vari
         supervisor
             .ask(TerminalSupervisorOwnerRequest::new(request))
             .await
-            .expect("owner request reaches supervisor actor")
+            .expect("meta request reaches supervisor actor")
     });
 
     assert_eq!(
@@ -449,7 +445,7 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
         .expect("environment lock is available");
     let fixture = SupervisorFixture::new("spawn-envelope-environment");
     let socket = fixture.root.join("run").join("terminal.sock");
-    let state = fixture.root.join("state").join("terminal.redb");
+    let state = fixture.root.join("state").join("terminal.sema");
     let terminal_store = EnvironmentRestore::capture("TERMINAL_STORE");
     let state_path = EnvironmentRestore::capture("PERSONA_STATE_PATH");
     let socket_path = EnvironmentRestore::capture("PERSONA_SOCKET_PATH");
@@ -727,11 +723,11 @@ fn test_exchange() -> ExchangeIdentifier {
     )
 }
 
-fn test_supervision_exchange() -> FrameExchangeIdentifier {
-    FrameExchangeIdentifier::new(
-        FrameSessionEpoch::new(0),
-        FrameExchangeLane::Connector,
-        FrameLaneSequence::first(),
+fn test_supervision_exchange() -> ExchangeIdentifier {
+    ExchangeIdentifier::new(
+        SessionEpoch::new(0),
+        ExchangeLane::Connector,
+        LaneSequence::first(),
     )
 }
 
