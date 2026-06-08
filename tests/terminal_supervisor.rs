@@ -8,9 +8,9 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use owner_signal_terminal::{
-    CreateSession, OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
-    OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason, TerminalCommand,
+use meta_signal_terminal::{
+    CreateSession, MetaTerminalOperationKind, MetaTerminalReply, MetaTerminalRequest,
+    MetaTerminalRequestUnimplemented, MetaTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
 use signal_engine_management::{
@@ -32,7 +32,7 @@ use signal_terminal::{
 use terminal::registry::SessionRegistration;
 use terminal::supervisor::{
     TerminalSupervisor, TerminalSupervisorCommandLine, TerminalSupervisorDaemon,
-    TerminalSupervisorFrameCodec, TerminalSupervisorOwnerRequest,
+    TerminalSupervisorFrameCodec, TerminalSupervisorMetaRequest,
 };
 use terminal::tables::{StoreLocation, TerminalTables};
 use terminal::{
@@ -402,11 +402,11 @@ fn terminal_supervisor_lists_sessions_without_contacting_cells() {
 }
 
 #[test]
-fn terminal_supervisor_owner_request_reaches_owner_surface_without_ordinary_variant() {
-    let fixture = SupervisorFixture::new("owner-session-unimplemented");
+fn terminal_supervisor_meta_request_reaches_meta_surface_without_ordinary_variant() {
+    let fixture = SupervisorFixture::new("meta-session-unimplemented");
     let runtime = tokio::runtime::Runtime::new().expect("runtime starts");
     let supervisor = runtime.block_on(TerminalSupervisor::start(fixture.store()));
-    let request = OwnerTerminalRequest::CreateSession(CreateSession {
+    let request = MetaTerminalRequest::CreateSession(CreateSession {
         name: TerminalName::new("operator"),
         command: TerminalCommand {
             executable: TerminalCommandExecutable::new("pi"),
@@ -418,17 +418,17 @@ fn terminal_supervisor_owner_request_reaches_owner_surface_without_ordinary_vari
 
     let reply = runtime.block_on(async {
         supervisor
-            .ask(TerminalSupervisorOwnerRequest::new(request))
+            .ask(TerminalSupervisorMetaRequest::new(request))
             .await
             .expect("meta request reaches supervisor actor")
     });
 
     assert_eq!(
         reply.into_reply(),
-        OwnerTerminalReply::OwnerTerminalRequestUnimplemented(OwnerTerminalRequestUnimplemented {
+        MetaTerminalReply::MetaTerminalRequestUnimplemented(MetaTerminalRequestUnimplemented {
             terminal: TerminalName::new("operator"),
-            operation: OwnerTerminalOperationKind::CreateSession,
-            reason: OwnerTerminalUnimplementedReason::NotBuiltYet,
+            operation: MetaTerminalOperationKind::CreateSession,
+            reason: MetaTerminalUnimplementedReason::NotBuiltYet,
         })
     );
     runtime

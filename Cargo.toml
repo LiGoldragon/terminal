@@ -61,7 +61,7 @@ sema-engine  = { git = "https://github.com/LiGoldragon/sema-engine.git", branch 
 signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
 signal-engine-management = { git = "https://github.com/LiGoldragon/signal-engine-management.git", branch = "main" }
 signal-hook  = "0.3"
-owner-signal-terminal = { git = "https://github.com/LiGoldragon/owner-signal-terminal.git", branch = "main" }
+meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", branch = "main" }
 signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-origin.git", branch = "main" }
 signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }

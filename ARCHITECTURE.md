@@ -456,7 +456,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 src/pty.rs                         terminal-cell daemon/view/client adapter
 src/contract.rs                    signal-terminal adapter
 src/signal_control.rs              Kameo actor for prompt/gate/injection control state
-src/supervisor.rs                  engine-facing Signal supervisor socket and owner-terminal request surface
+src/supervisor.rs                  engine-facing Signal supervisor socket and meta-terminal request surface
 src/tables.rs                      sema-engine tables over signal-terminal introspection records
 src/registry.rs                    session registration + inspection clients
 src/capture_validator.rs           structured validator for signal-capture TSV artifacts

@@ -371,6 +371,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "meta-signal-terminal"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=main#fc86c5fea137397d0d0ec1d13866cf9cbd20536d"
+dependencies = [
+ "nota-next",
+ "rkyv",
+ "signal-engine-management",
+ "signal-frame",
+ "signal-terminal",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -419,7 +432,7 @@ dependencies = [
 [[package]]
 name = "nota-next"
 version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#f0e435a629f8312b173b0f8564c17ee0a4001561"
+source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#ae5c25cd42b65512be941b274922c9e17bf67176"
 dependencies = [
  "nota-next-derive",
  "rkyv",
@@ -428,7 +441,7 @@ dependencies = [
 [[package]]
 name = "nota-next-derive"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#f0e435a629f8312b173b0f8564c17ee0a4001561"
+source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#ae5c25cd42b65512be941b274922c9e17bf67176"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -440,19 +453,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "owner-signal-terminal"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/owner-signal-terminal.git?branch=main#e69f22ba22b23a84abf59da4381804960a01d730"
-dependencies = [
- "nota-next",
- "rkyv",
- "signal-engine-management",
- "signal-frame",
- "signal-terminal",
- "thiserror 2.0.18",
-]
 
 [[package]]
 name = "parking_lot"
@@ -702,8 +702,8 @@ dependencies = [
 
 [[package]]
 name = "schema-rust-next"
-version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#83b3c474b7ab5225d548f551b1ca6e7afd274aeb"
+version = "0.5.1"
+source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#83f1ee1f91a67e8728ad0fdc657b4cbd7d3d48dc"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -731,8 +731,8 @@ dependencies = [
 
 [[package]]
 name = "sema-engine"
-version = "0.2.2"
-source = "git+https://github.com/LiGoldragon/sema-engine.git?branch=main#5cee99380c4dbc22eba7615b15168f382f568751"
+version = "0.2.3"
+source = "git+https://github.com/LiGoldragon/sema-engine.git?branch=main#ebee6e44ba6ee4afcb26998007bcfd128641b54c"
 dependencies = [
  "rkyv",
  "sema",
@@ -842,8 +842,8 @@ dependencies = [
 
 [[package]]
 name = "signal-frame"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#904bb2fdb0210bbeec9f9f4edc9f8b88341522a3"
+version = "0.2.1"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#8b128d3648935d9d322d5c4985d5b347aaeecddd"
 dependencies = [
  "nota-next",
  "paste",
@@ -854,8 +854,8 @@ dependencies = [
 
 [[package]]
 name = "signal-frame-macros"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#904bb2fdb0210bbeec9f9f4edc9f8b88341522a3"
+version = "0.1.1"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#8b128d3648935d9d322d5c4985d5b347aaeecddd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -904,10 +904,9 @@ dependencies = [
 
 [[package]]
 name = "signal-sema"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-sema.git?branch=main#4f75d1c31b7481e3f212e1885b98939a5172ce1a"
+version = "0.2.0"
+source = "git+https://github.com/LiGoldragon/signal-sema.git?branch=main#33f62840678530289e9b96485453f7d86e343182"
 dependencies = [
- "nota-next",
  "rkyv",
  "thiserror 2.0.18",
 ]
@@ -915,7 +914,7 @@ dependencies = [
 [[package]]
 name = "signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#42766e8bc71d3f6f4a61794c73e7304e2dbf7b88"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#9ed60fbe17ee58a30d94146ecda11ae0ef85fd09"
 dependencies = [
  "nota-next",
  "rkyv",
@@ -970,8 +969,8 @@ version = "0.1.0"
 dependencies = [
  "crossterm",
  "kameo",
+ "meta-signal-terminal",
  "nota-next",
- "owner-signal-terminal",
  "regex",
  "rkyv",
  "schema-rust-next",
@@ -991,7 +990,7 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#20306f879480e54f9dd9473244d2e7085205c10a"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#fa7aa697e21162da7a387582ee0b856d6b5e92c6"
 dependencies = [
  "crossterm",
  "kameo",
@@ -1129,8 +1128,8 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.5.0"
-source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#0b1746d47b4f569413e41772eae3aefe6981385b"
+version = "0.6.0"
+source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#1210391f3f99914ca79abbc50b9eba4df9946a83"
 dependencies = [
  "kameo",
  "rustix 1.1.4",

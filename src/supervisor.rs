@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use owner_signal_terminal::{
-    OwnerTerminalOperationKind, OwnerTerminalReply, OwnerTerminalRequest,
-    OwnerTerminalRequestUnimplemented, OwnerTerminalUnimplementedReason,
+use meta_signal_terminal::{
+    MetaTerminalOperationKind, MetaTerminalReply, MetaTerminalRequest,
+    MetaTerminalRequestUnimplemented, MetaTerminalUnimplementedReason,
 };
 use signal_engine_management::WirePath;
 use signal_frame::{
@@ -445,20 +445,20 @@ pub enum TerminalSupervisorSignalOutput {
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
 pub struct TerminalSupervisorState {
     pub served_request_count: u64,
-    pub served_owner_request_count: u64,
+    pub served_meta_request_count: u64,
     pub recorded_event_count: u64,
     pub last_operation: Option<TerminalOperationKind>,
-    pub last_owner_operation: Option<OwnerTerminalOperationKind>,
+    pub last_meta_operation: Option<MetaTerminalOperationKind>,
 }
 
 #[derive(Debug)]
 pub struct TerminalSupervisor {
     store: StoreLocation,
     served_request_count: u64,
-    served_owner_request_count: u64,
+    served_meta_request_count: u64,
     recorded_event_count: u64,
     last_operation: Option<TerminalOperationKind>,
-    last_owner_operation: Option<OwnerTerminalOperationKind>,
+    last_meta_operation: Option<MetaTerminalOperationKind>,
 }
 
 impl TerminalSupervisor {
@@ -466,10 +466,10 @@ impl TerminalSupervisor {
         Self {
             store,
             served_request_count: 0,
-            served_owner_request_count: 0,
+            served_meta_request_count: 0,
             recorded_event_count: 0,
             last_operation: None,
-            last_owner_operation: None,
+            last_meta_operation: None,
         }
     }
 
@@ -493,10 +493,10 @@ impl TerminalSupervisor {
     fn state(&self) -> TerminalSupervisorState {
         TerminalSupervisorState {
             served_request_count: self.served_request_count,
-            served_owner_request_count: self.served_owner_request_count,
+            served_meta_request_count: self.served_meta_request_count,
             recorded_event_count: self.recorded_event_count,
             last_operation: self.last_operation,
-            last_owner_operation: self.last_owner_operation,
+            last_meta_operation: self.last_meta_operation,
         }
     }
 
@@ -616,35 +616,35 @@ impl TerminalSupervisor {
         ))
     }
 
-    fn event_for_owner_request(&mut self, request: OwnerTerminalRequest) -> OwnerTerminalReply {
+    fn event_for_meta_request(&mut self, request: MetaTerminalRequest) -> MetaTerminalReply {
         let terminal = match &request {
-            OwnerTerminalRequest::CreateSession(payload) => payload.name.clone(),
-            OwnerTerminalRequest::RetireSession(payload) => payload.name.clone(),
+            MetaTerminalRequest::CreateSession(payload) => payload.name.clone(),
+            MetaTerminalRequest::RetireSession(payload) => payload.name.clone(),
         };
-        OwnerTerminalRequestUnimplemented {
+        MetaTerminalRequestUnimplemented {
             terminal,
             operation: request.operation_kind(),
-            reason: OwnerTerminalUnimplementedReason::NotBuiltYet,
+            reason: MetaTerminalUnimplementedReason::NotBuiltYet,
         }
         .into()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, kameo::Reply)]
-pub struct TerminalSupervisorOwnerReply {
-    reply: OwnerTerminalReply,
+pub struct TerminalSupervisorMetaReply {
+    reply: MetaTerminalReply,
 }
 
-impl TerminalSupervisorOwnerReply {
-    pub const fn new(reply: OwnerTerminalReply) -> Self {
+impl TerminalSupervisorMetaReply {
+    pub const fn new(reply: MetaTerminalReply) -> Self {
         Self { reply }
     }
 
-    pub fn into_reply(self) -> OwnerTerminalReply {
+    pub fn into_reply(self) -> MetaTerminalReply {
         self.reply
     }
 
-    pub const fn reply(&self) -> &OwnerTerminalReply {
+    pub const fn reply(&self) -> &MetaTerminalReply {
         &self.reply
     }
 }
@@ -714,27 +714,27 @@ impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalSupervisorOwnerRequest {
-    request: OwnerTerminalRequest,
+pub struct TerminalSupervisorMetaRequest {
+    request: MetaTerminalRequest,
 }
 
-impl TerminalSupervisorOwnerRequest {
-    pub fn new(request: OwnerTerminalRequest) -> Self {
+impl TerminalSupervisorMetaRequest {
+    pub fn new(request: MetaTerminalRequest) -> Self {
         Self { request }
     }
 }
 
-impl Message<TerminalSupervisorOwnerRequest> for TerminalSupervisor {
-    type Reply = TerminalSupervisorOwnerReply;
+impl Message<TerminalSupervisorMetaRequest> for TerminalSupervisor {
+    type Reply = TerminalSupervisorMetaReply;
 
     async fn handle(
         &mut self,
-        message: TerminalSupervisorOwnerRequest,
+        message: TerminalSupervisorMetaRequest,
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
-        self.served_owner_request_count = self.served_owner_request_count.saturating_add(1);
-        self.last_owner_operation = Some(message.request.operation_kind());
-        TerminalSupervisorOwnerReply::new(self.event_for_owner_request(message.request))
+        self.served_meta_request_count = self.served_meta_request_count.saturating_add(1);
+        self.last_meta_operation = Some(message.request.operation_kind());
+        TerminalSupervisorMetaReply::new(self.event_for_meta_request(message.request))
     }
 }
 

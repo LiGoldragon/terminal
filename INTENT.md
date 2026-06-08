@@ -10,8 +10,7 @@ launch policy, and the component SEMA metadata around `terminal-cell`.
 It is the boundary component that transports terminal bytes without
 interpreting their meaning. Paired with the contract repos
 `signal-terminal` (ordinary terminal transport vocabulary) and
-the terminal meta signal contract (currently still named
-`owner-signal-terminal` until the workspace repo rename lands).
+`meta-signal-terminal` (terminal meta policy vocabulary).
 
 Terminal now carries the schema-derived triad substrate in-tree:
 `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema`
