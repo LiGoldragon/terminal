@@ -172,7 +172,16 @@ pub struct PromptPatternRegistration(pub PromptPatternIdentifier);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+)]
 pub enum PromptState {
     Clean,
     Dirty,
@@ -207,7 +216,16 @@ pub struct TranscriptCapture {
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+)]
 pub enum OperationKind {
     ListSessions,
     ResolveSession,
@@ -220,7 +238,16 @@ pub enum OperationKind {
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
-#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+)]
 pub enum UnimplementedReason {
     NotInPrototypeScope,
     SessionMissing,
@@ -605,8 +632,8 @@ impl PromptState {
     pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
         <Self as NotaDecode>::from_nota_block(block)
     }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
+    pub fn to_nota(self) -> String {
+        <Self as NotaEncode>::to_nota(&self)
     }
 }
 
@@ -660,8 +687,8 @@ impl OperationKind {
     pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
         <Self as NotaDecode>::from_nota_block(block)
     }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
+    pub fn to_nota(self) -> String {
+        <Self as NotaEncode>::to_nota(&self)
     }
 }
 
@@ -671,8 +698,8 @@ impl UnimplementedReason {
     pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
         <Self as NotaDecode>::from_nota_block(block)
     }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
+    pub fn to_nota(self) -> String {
+        <Self as NotaEncode>::to_nota(&self)
     }
 }
 
@@ -1030,6 +1057,67 @@ impl Output {
             });
         }
         Ok((route, value))
+    }
+}
+
+#[rustfmt::skip]
+impl signal_frame::RequestPayload for Input {}
+#[rustfmt::skip]
+impl signal_frame::SignalOperationHeads for Input {
+    const HEADS: &'static [&'static str] = &[
+        "ListSessions",
+        "ResolveSession",
+        "RegisterPromptPattern",
+        "AcquireInputGate",
+        "WriteInjection",
+        "ReleaseInputGate",
+        "CaptureTranscript",
+    ];
+}
+#[rustfmt::skip]
+impl signal_frame::LogVariant for Input {
+    fn log_variant(&self) -> u64 {
+        self.short_header()
+    }
+}
+#[rustfmt::skip]
+pub type Frame = signal_frame::ExchangeFrame<Input, Output>;
+#[rustfmt::skip]
+pub type FrameBody = signal_frame::ExchangeFrameBody<Input, Output>;
+#[rustfmt::skip]
+pub type Request = signal_frame::Request<Input>;
+#[rustfmt::skip]
+pub type ReplyEnvelope = signal_frame::Reply<Output>;
+#[rustfmt::skip]
+pub type RequestBuilder = signal_frame::RequestBuilder<Input>;
+#[rustfmt::skip]
+impl Input {
+    pub fn into_frame(self, exchange: signal_frame::ExchangeIdentifier) -> Frame {
+        let short_header = signal_frame::ShortHeader::new(self.short_header());
+        let request = signal_frame::Request::from_payload(self);
+        Frame::with_short_header(
+            short_header,
+            FrameBody::Request {
+                exchange,
+                request,
+            },
+        )
+    }
+}
+#[rustfmt::skip]
+impl Output {
+    pub fn into_reply_frame(self, exchange: signal_frame::ExchangeIdentifier) -> Frame {
+        let short_header = signal_frame::ShortHeader::new(self.short_header());
+        let reply = signal_frame::Reply::committed(
+            signal_frame::NonEmpty::single(signal_frame::SubReply::Ok(self)),
+        );
+        Frame::with_short_header(
+            short_header,
+            FrameBody::Reply {
+                exchange,
+                reply,
+            },
+        )
     }
 }
 
