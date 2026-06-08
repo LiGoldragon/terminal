@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use signal_terminal::{TerminalConnection, TerminalName, TerminalReady, TerminalReply};
+use signal_terminal::{Output, TerminalConnection, TerminalName, TerminalReady};
 use terminal::capture_validator::CaptureValidatorCommandLine;
 use terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
 use terminal::supervisor::TerminalSupervisorFrameCodec;
@@ -77,17 +77,14 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
             .expect("client writes signal request");
         assert_eq!(
             request,
-            TerminalConnection {
-                terminal: TerminalName::new("operator")
-            }
-            .into()
+            TerminalConnection(TerminalName::new("operator".to_string())).into()
         );
         let stream: &mut UnixStream = stream.get_mut();
         codec
             .write_event(
                 stream,
-                TerminalReply::from(TerminalReady {
-                    terminal: TerminalName::new("operator"),
+                Output::from(TerminalReady {
+                    terminal: TerminalName::new("operator".to_string()),
                     generation: signal_terminal::TerminalGeneration::new(1),
                 }),
             )
@@ -96,7 +93,7 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
 
     let request = TerminalSignalRequest::new(
         fixture.socket(),
-        TerminalName::new("operator"),
+        TerminalName::new("operator".to_string()),
         TerminalSignalOperation::Connect,
     );
     let mut output = Vec::new();

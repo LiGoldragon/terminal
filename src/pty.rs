@@ -173,9 +173,9 @@ impl DaemonArguments {
                 "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--store" => store = arguments.next().map(StoreLocation::new),
                 "--name" | "--terminal" => {
-                    terminal = arguments
-                        .next()
-                        .map(|value| signal_terminal::TerminalName::new(value.to_string_lossy()))
+                    terminal = arguments.next().map(|value| {
+                        signal_terminal::TerminalName::new(value.to_string_lossy().into_owned())
+                    })
                 }
                 value => {
                     command.push(value.to_string());
@@ -520,7 +520,7 @@ impl TerminalControlConnection {
     }
 
     fn handle_signal_request(&mut self, request: SignalSocketRequest) -> io::Result<()> {
-        if let terminal_signal::TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) =
+        if let terminal_signal::Input::SubscribeTerminalWorkerLifecycle(subscription) =
             request.payload()
         {
             return self.stream_signal_worker_lifecycle(subscription.clone());
@@ -551,7 +551,7 @@ impl TerminalControlConnection {
             .map_err(Self::actor_error)?;
         SocketReplyWriter::new(&mut self.stream).write_signal_event(
             terminal_signal::TerminalWorkerLifecycleSnapshot {
-                terminal: subscription.terminal.clone(),
+                terminal: subscription.0.clone(),
                 observations: lifecycle
                     .replay()
                     .iter()
@@ -565,13 +565,13 @@ impl TerminalControlConnection {
         while let Some(event) = lifecycle.blocking_next_live_event() {
             // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
             // belongs to the streaming TerminalEvent enum, not the
-            // direct-reply TerminalReply enum. terminal-cell exposes
+            // direct-reply Output enum. terminal-cell exposes
             // `write_signal_subscription_event` for this path; the
             // terminal supervisor is a passthrough so it
             // wraps the same way.
             SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
                 terminal_signal::TerminalWorkerLifecycleEvent {
-                    terminal: subscription.terminal.clone(),
+                    terminal: subscription.0.clone(),
                     observation: TerminalSignalControl::worker_lifecycle(event),
                 }
                 .into(),
@@ -1004,10 +1004,7 @@ impl TerminalSocket {
         Ok(TerminalSnapshot::from_bytes(self.client.capture()?))
     }
 
-    pub fn signal(
-        &self,
-        request: terminal_signal::TerminalRequest,
-    ) -> Result<terminal_signal::TerminalReply> {
+    pub fn signal(&self, request: terminal_signal::Input) -> Result<terminal_signal::Output> {
         Ok(self.client.send_signal_request(request)?)
     }
 }

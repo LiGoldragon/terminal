@@ -14,21 +14,21 @@ use meta_signal_terminal::{
     MetaTerminalRequestUnimplemented, MetaTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
-use signal_engine_management::{
-    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion,
-    Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
-    Presence, Query as SupervisionQuery, Reply as SupervisionReply, WirePath,
-};
 use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Request as FrameRequest, SessionEpoch,
 };
+use signal_persona::{
+    ComponentHealth, ComponentKind, ComponentName, EngineManagementProtocolVersion,
+    Frame as SupervisionFrame, FrameBody as SupervisionFrameBody, Operation as SupervisionRequest,
+    Presence, Query as SupervisionQuery, Reply as SupervisionReply,
+};
 use signal_terminal::{
-    ListSessions, PromptPattern, PromptPatternBytes, PromptPatternIdentifier,
-    PromptPatternRegistered, RegisterPromptPattern, ResolveSession, SessionEntry, SessionList,
-    SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState, TerminalEvent,
-    TerminalFrame, TerminalFrameBody as FrameBody, TerminalName, TerminalReply, TerminalWorkerKind,
+    Frame, FrameBody, ListSessions, Output, PromptPattern, PromptPatternBytes,
+    PromptPatternIdentifier, PromptPatternRegistered, RegisterPromptPattern, ResolveSession,
+    SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
+    TerminalDeliveryAttemptState, TerminalEvent, TerminalName, TerminalWorkerKind,
     TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
-    TerminalWorkerStopReason,
+    TerminalWorkerStop, TerminalWorkerStopReason, WirePath,
 };
 use terminal::registry::SessionRegistration;
 use terminal::supervisor::{
@@ -43,6 +43,13 @@ use terminal::{
 use triad_runtime::DaemonConfiguration;
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Widen a `u8` byte literal into the schema-emitted `Integer` (`u64`)
+/// byte vector the signal-terminal contract carries on its byte-bearing
+/// fields.
+fn signal_bytes(bytes: &[u8]) -> Vec<u64> {
+    bytes.iter().map(|byte| u64::from(*byte)).collect()
+}
 
 struct SupervisorFixture {
     root: PathBuf,
@@ -158,19 +165,23 @@ fn terminal_supervisor_daemon_applies_spawn_envelope_socket_mode() {
 fn terminal_supervisor_frame_codec_rejects_multi_payload_request() {
     let request = FrameRequest::from_payloads(NonEmpty::from_head_and_tail(
         RegisterPromptPattern {
-            terminal: TerminalName::new("operator"),
-            pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"ready> ".to_vec())),
+            terminal: TerminalName::new("operator".to_string()),
+            pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(signal_bytes(
+                b"ready> ",
+            ))),
         }
         .into(),
         vec![
             RegisterPromptPattern {
-                terminal: TerminalName::new("operator"),
-                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"again> ".to_vec())),
+                terminal: TerminalName::new("operator".to_string()),
+                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(signal_bytes(
+                    b"again> ",
+                ))),
             }
             .into(),
         ],
     ));
-    let frame = TerminalFrame::new(FrameBody::Request {
+    let frame = Frame::new(FrameBody::Request {
         exchange: test_exchange(),
         request,
     });
@@ -189,7 +200,7 @@ fn terminal_supervisor_frame_codec_rejects_multi_payload_request() {
 #[test]
 fn terminal_supervisor_socket_routes_through_component_sema() {
     let fixture = SupervisorFixture::new("routes-through-sema");
-    let terminal = TerminalName::new("operator");
+    let terminal = TerminalName::new("operator".to_string());
     SessionRegistration::ready(
         fixture.store(),
         terminal.clone(),
@@ -213,9 +224,9 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
                 request,
                 RegisterPromptPattern {
                     terminal: terminal.clone(),
-                    pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(
-                        b"ready> ".to_vec(),
-                    )),
+                    pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(signal_bytes(
+                        b"ready> "
+                    ))),
                 }
                 .into()
             );
@@ -223,9 +234,9 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
             codec
                 .write_event(
                     stream,
-                    TerminalReply::from(PromptPatternRegistered {
+                    Output::from(PromptPatternRegistered {
                         terminal,
-                        pattern_id: PromptPatternIdentifier::new("from-cell"),
+                        pattern_id: PromptPatternIdentifier::new("from-cell".to_string()),
                     }),
                 )
                 .expect("fake cell writes terminal signal event");
@@ -251,7 +262,9 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
             &mut stream,
             RegisterPromptPattern {
                 terminal: terminal.clone(),
-                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(b"ready> ".to_vec())),
+                pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(signal_bytes(
+                    b"ready> ",
+                ))),
             }
             .into(),
         )
@@ -262,16 +275,16 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
 
     assert_eq!(
         event,
-        TerminalReply::from(PromptPatternRegistered {
+        Output::from(PromptPatternRegistered {
             terminal,
-            pattern_id: PromptPatternIdentifier::new("from-cell"),
+            pattern_id: PromptPatternIdentifier::new("from-cell".to_string()),
         })
     );
     assert_eq!(
         served.join().expect("supervisor server joins"),
-        TerminalReply::from(PromptPatternRegistered {
-            terminal: TerminalName::new("operator"),
-            pattern_id: PromptPatternIdentifier::new("from-cell"),
+        Output::from(PromptPatternRegistered {
+            terminal: TerminalName::new("operator".to_string()),
+            pattern_id: PromptPatternIdentifier::new("from-cell".to_string()),
         })
     );
     let tables = TerminalTables::open(&fixture.store()).expect("terminal tables open");
@@ -279,7 +292,10 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
         .delivery_attempt_records()
         .expect("delivery attempts are readable");
     assert_eq!(attempts.len(), 1);
-    assert_eq!(attempts[0].terminal(), &TerminalName::new("operator"));
+    assert_eq!(
+        attempts[0].terminal(),
+        &TerminalName::new("operator".to_string())
+    );
     assert_eq!(attempts[0].state(), TerminalDeliveryAttemptState::Started);
 
     let events = tables
@@ -288,9 +304,9 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
     assert_eq!(events.len(), 1);
     assert_eq!(
         events[0].event(),
-        &TerminalReply::from(PromptPatternRegistered {
-            terminal: TerminalName::new("operator"),
-            pattern_id: PromptPatternIdentifier::new("from-cell"),
+        &Output::from(PromptPatternRegistered {
+            terminal: TerminalName::new("operator".to_string()),
+            pattern_id: PromptPatternIdentifier::new("from-cell".to_string()),
         })
     );
     cell.join().expect("fake cell joins");
@@ -299,7 +315,7 @@ fn terminal_supervisor_socket_routes_through_component_sema() {
 #[test]
 fn terminal_supervisor_resolves_session_without_contacting_cell() {
     let fixture = SupervisorFixture::new("resolve-session");
-    let terminal = TerminalName::new("operator");
+    let terminal = TerminalName::new("operator".to_string());
     SessionRegistration::ready(
         fixture.store(),
         terminal.clone(),
@@ -324,18 +340,12 @@ fn terminal_supervisor_resolves_session_without_contacting_cell() {
         UnixStream::connect(supervisor_socket).expect("client connects to supervisor socket");
     let codec = TerminalSupervisorFrameCodec::default();
     codec
-        .write_request(
-            &mut stream,
-            ResolveSession {
-                name: terminal.clone(),
-            }
-            .into(),
-        )
+        .write_request(&mut stream, ResolveSession(terminal.clone()).into())
         .expect("client writes supervisor request");
     let event = codec
         .read_event(&mut stream)
         .expect("client reads supervisor event");
-    let expected = TerminalReply::from(SessionResolved {
+    let expected = Output::from(SessionResolved {
         name: terminal,
         data_socket_path: WirePath::new(fixture.cell_data_socket().display().to_string()),
     });
@@ -347,8 +357,8 @@ fn terminal_supervisor_resolves_session_without_contacting_cell() {
 #[test]
 fn terminal_supervisor_lists_sessions_without_contacting_cells() {
     let fixture = SupervisorFixture::new("list-sessions");
-    let operator = TerminalName::new("operator");
-    let designer = TerminalName::new("designer");
+    let operator = TerminalName::new("operator".to_string());
+    let designer = TerminalName::new("designer".to_string());
     let operator_data_socket = fixture.root.join("operator.data.sock");
     let designer_data_socket = fixture.root.join("designer.data.sock");
     SessionRegistration::ready(
@@ -388,7 +398,7 @@ fn terminal_supervisor_lists_sessions_without_contacting_cells() {
     let event = codec
         .read_event(&mut stream)
         .expect("client reads supervisor event");
-    let TerminalReply::SessionList(SessionList { mut entries }) = event.clone() else {
+    let Output::SessionList(SessionList(mut entries)) = event.clone() else {
         panic!("expected session list reply, got {event:?}");
     };
     entries.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
@@ -413,7 +423,7 @@ fn terminal_supervisor_meta_request_reaches_meta_surface_without_ordinary_varian
     let runtime = tokio::runtime::Runtime::new().expect("runtime starts");
     let supervisor = runtime.block_on(TerminalSupervisor::start(fixture.store()));
     let request = MetaTerminalRequest::CreateSession(CreateSession {
-        name: TerminalName::new("operator"),
+        name: TerminalName::new("operator".to_string()),
         command: TerminalCommand {
             executable: TerminalCommandExecutable::new("pi"),
             arguments: Vec::new(),
@@ -432,7 +442,7 @@ fn terminal_supervisor_meta_request_reaches_meta_surface_without_ordinary_varian
     assert_eq!(
         reply.into_reply(),
         MetaTerminalReply::MetaTerminalRequestUnimplemented(MetaTerminalRequestUnimplemented {
-            terminal: TerminalName::new("operator"),
+            terminal: TerminalName::new("operator".to_string()),
             operation: MetaTerminalOperationKind::CreateSession,
             reason: MetaTerminalUnimplementedReason::NotBuiltYet,
         })
@@ -467,9 +477,9 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
 
 #[test]
 fn terminal_daemon_configuration_raises_working_request_concurrency() {
-    use signal_engine_management::SocketMode as WireSocketMode;
-    use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
+    use signal_terminal::SocketMode as WireSocketMode;
     use signal_terminal::TerminalDaemonConfiguration;
+    use signal_terminal::{OwnerIdentity, UnixUserIdentifier};
 
     let fixture = SupervisorFixture::new("request-concurrency");
     let raw = TerminalDaemonConfiguration {
@@ -491,9 +501,9 @@ fn terminal_daemon_configuration_raises_working_request_concurrency() {
 
 #[test]
 fn terminal_supervisor_answers_component_supervision_relation() {
-    use signal_engine_management::SocketMode as WireSocketMode;
-    use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
+    use signal_terminal::SocketMode as WireSocketMode;
     use signal_terminal::TerminalDaemonConfiguration;
+    use signal_terminal::{OwnerIdentity, UnixUserIdentifier};
 
     let fixture = SupervisorFixture::new("supervision");
     let supervision_socket = fixture.supervision_socket();
@@ -556,7 +566,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     write_meta_terminal_request(
         &mut meta_stream,
         MetaTerminalRequest::CreateSession(CreateSession {
-            name: TerminalName::new("operator"),
+            name: TerminalName::new("operator".to_string()),
             command: TerminalCommand {
                 executable: TerminalCommandExecutable::new("pi"),
                 arguments: Vec::new(),
@@ -568,7 +578,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     assert_eq!(
         read_meta_terminal_reply(&mut meta_stream),
         MetaTerminalReply::MetaTerminalRequestUnimplemented(MetaTerminalRequestUnimplemented {
-            terminal: TerminalName::new("operator"),
+            terminal: TerminalName::new("operator".to_string()),
             operation: MetaTerminalOperationKind::CreateSession,
             reason: MetaTerminalUnimplementedReason::NotBuiltYet,
         })
@@ -639,7 +649,7 @@ fn terminal_supervisor_configuration_rejects_nota_arguments() {
 #[test]
 fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     let fixture = SupervisorFixture::new("streams-lifecycle");
-    let terminal = TerminalName::new("responder");
+    let terminal = TerminalName::new("responder".to_string());
     SessionRegistration::ready(
         fixture.store(),
         terminal.clone(),
@@ -661,16 +671,13 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
                 .expect("supervisor writes subscription request");
             assert_eq!(
                 request,
-                SubscribeTerminalWorkerLifecycle {
-                    terminal: terminal.clone(),
-                }
-                .into()
+                SubscribeTerminalWorkerLifecycle(terminal.clone()).into()
             );
             let stream: &mut UnixStream = stream.get_mut();
             codec
                 .write_event(
                     stream,
-                    TerminalReply::from(TerminalWorkerLifecycleSnapshot {
+                    Output::from(TerminalWorkerLifecycleSnapshot {
                         terminal: terminal.clone(),
                         observations: vec![TerminalWorkerLifecycle::Started(
                             TerminalWorkerKind::OutputReader,
@@ -683,10 +690,10 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
                     stream,
                     TerminalEvent::from(TerminalWorkerLifecycleEvent {
                         terminal,
-                        observation: TerminalWorkerLifecycle::Stopped {
+                        observation: TerminalWorkerLifecycle::Stopped(TerminalWorkerStop {
                             worker: TerminalWorkerKind::OutputReader,
                             reason: TerminalWorkerStopReason::OutputReaderFinished,
-                        },
+                        }),
                     }),
                 )
                 .expect("fake cell writes lifecycle delta");
@@ -710,10 +717,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     codec
         .write_request(
             &mut stream,
-            SubscribeTerminalWorkerLifecycle {
-                terminal: terminal.clone(),
-            }
-            .into(),
+            SubscribeTerminalWorkerLifecycle(terminal.clone()).into(),
         )
         .expect("client writes subscription request");
     let snapshot = codec
@@ -725,8 +729,8 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
 
     assert_eq!(
         snapshot,
-        TerminalReply::from(TerminalWorkerLifecycleSnapshot {
-            terminal: TerminalName::new("responder"),
+        Output::from(TerminalWorkerLifecycleSnapshot {
+            terminal: TerminalName::new("responder".to_string()),
             observations: vec![TerminalWorkerLifecycle::Started(
                 TerminalWorkerKind::OutputReader,
             )],
@@ -735,11 +739,11 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     assert_eq!(
         delta,
         TerminalEvent::from(TerminalWorkerLifecycleEvent {
-            terminal: TerminalName::new("responder"),
-            observation: TerminalWorkerLifecycle::Stopped {
+            terminal: TerminalName::new("responder".to_string()),
+            observation: TerminalWorkerLifecycle::Stopped(TerminalWorkerStop {
                 worker: TerminalWorkerKind::OutputReader,
                 reason: TerminalWorkerStopReason::OutputReaderFinished,
-            },
+            }),
         })
     );
     assert_eq!(served.join().expect("supervisor server joins"), snapshot);

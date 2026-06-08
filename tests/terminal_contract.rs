@@ -1,7 +1,7 @@
 use signal_terminal::{
-    TerminalConnection, TerminalDetached, TerminalDetachment, TerminalDetachmentReason,
-    TerminalGeneration, TerminalInput, TerminalInputAccepted, TerminalInputBytes, TerminalName,
-    TerminalRejected, TerminalRejectionReason, TerminalReply, TerminalRequest, TerminalSequence,
+    Input, Output, TerminalConnection, TerminalDetached, TerminalDetachment,
+    TerminalDetachmentReason, TerminalGeneration, TerminalInput, TerminalInputAccepted,
+    TerminalInputBytes, TerminalName, TerminalRejected, TerminalRejectionReason, TerminalSequence,
     TranscriptDelta,
 };
 use std::os::unix::net::UnixListener;
@@ -9,8 +9,15 @@ use std::thread;
 use terminal::contract::TerminalTransportBinding;
 use terminal::supervisor::TerminalSupervisorFrameCodec;
 
+/// Widen a `u8` byte literal into the schema-emitted `Integer` (`u64`)
+/// byte vector the signal-terminal contract carries on its byte-bearing
+/// fields.
+fn signal_bytes(bytes: &[u8]) -> Vec<u64> {
+    bytes.iter().map(|byte| u64::from(*byte)).collect()
+}
+
 fn terminal_name() -> TerminalName {
-    TerminalName::new("operator")
+    TerminalName::new("operator".to_string())
 }
 
 fn binding() -> TerminalTransportBinding {
@@ -29,9 +36,9 @@ fn unique_socket_path(name: &str) -> std::path::PathBuf {
 fn terminal_contract_connection_returns_ready_event() {
     let mut binding = binding();
     let event = binding
-        .handle_request(TerminalRequest::TerminalConnection(TerminalConnection {
-            terminal: terminal_name(),
-        }))
+        .handle_request(Input::TerminalConnection(TerminalConnection(
+            terminal_name(),
+        )))
         .expect("connection does not touch the socket");
 
     assert_eq!(event, binding.ready_event());
@@ -40,17 +47,17 @@ fn terminal_contract_connection_returns_ready_event() {
 #[test]
 fn terminal_contract_rejects_other_terminal_before_socket_io() {
     let mut binding = binding();
-    let other_terminal = TerminalName::new("designer");
+    let other_terminal = TerminalName::new("designer".to_string());
     let event = binding
-        .handle_request(TerminalRequest::TerminalInput(TerminalInput {
+        .handle_request(Input::TerminalInput(TerminalInput {
             terminal: other_terminal.clone(),
-            bytes: TerminalInputBytes::new(b"ignored".to_vec()),
+            bytes: TerminalInputBytes::new(signal_bytes(b"ignored")),
         }))
         .expect("terminal mismatch is local");
 
     assert_eq!(
         event,
-        TerminalReply::TerminalRejected(TerminalRejected {
+        Output::TerminalRejected(TerminalRejected {
             terminal: other_terminal,
             reason: TerminalRejectionReason::NotConnected,
         })
@@ -70,13 +77,16 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
             .read_request(&mut stream)
             .expect("binding writes a Signal request frame");
         match request {
-            TerminalRequest::TerminalInput(input) => {
+            Input::TerminalInput(input) => {
                 assert_eq!(input.terminal, server_terminal);
-                assert_eq!(input.bytes.as_slice(), b"typed input");
+                assert_eq!(
+                    input.bytes.as_slice(),
+                    signal_bytes(b"typed input").as_slice()
+                );
                 codec
                     .write_reply(
                         &mut stream,
-                        TerminalReply::TerminalInputAccepted(TerminalInputAccepted {
+                        Output::TerminalInputAccepted(TerminalInputAccepted {
                             terminal: input.terminal,
                             generation: TerminalGeneration::new(1),
                         }),
@@ -89,15 +99,15 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
 
     let mut binding = TerminalTransportBinding::from_socket_path(terminal_name(), &socket_path);
     let event = binding
-        .handle_request(TerminalRequest::TerminalInput(TerminalInput {
+        .handle_request(Input::TerminalInput(TerminalInput {
             terminal: terminal_name(),
-            bytes: TerminalInputBytes::new(b"typed input".to_vec()),
+            bytes: TerminalInputBytes::new(signal_bytes(b"typed input")),
         }))
         .expect("input request travels through Signal control plane");
 
     assert_eq!(
         event,
-        TerminalReply::TerminalInputAccepted(TerminalInputAccepted {
+        Output::TerminalInputAccepted(TerminalInputAccepted {
             terminal: terminal_name(),
             generation: TerminalGeneration::new(1),
         })
@@ -110,7 +120,7 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
 fn terminal_contract_detachment_is_typed_event() {
     let mut binding = binding();
     let event = binding
-        .handle_request(TerminalRequest::TerminalDetachment(TerminalDetachment {
+        .handle_request(Input::TerminalDetachment(TerminalDetachment {
             terminal: terminal_name(),
             reason: TerminalDetachmentReason::HarnessStopped,
         }))
@@ -118,7 +128,7 @@ fn terminal_contract_detachment_is_typed_event() {
 
     assert_eq!(
         event,
-        TerminalReply::TerminalDetached(TerminalDetached {
+        Output::TerminalDetached(TerminalDetached {
             terminal: terminal_name(),
             generation: binding.generation(),
             reason: TerminalDetachmentReason::HarnessStopped,
@@ -134,18 +144,18 @@ fn terminal_contract_transcript_delta_increments_sequence() {
 
     assert_eq!(
         first,
-        TerminalReply::TranscriptDelta(TranscriptDelta {
+        Output::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(1),
-            bytes: signal_terminal::TerminalTranscriptBytes::new(b"first".to_vec()),
+            bytes: signal_terminal::TerminalTranscriptBytes::new(signal_bytes(b"first")),
         })
     );
     assert_eq!(
         second,
-        TerminalReply::TranscriptDelta(TranscriptDelta {
+        Output::TranscriptDelta(TranscriptDelta {
             terminal: terminal_name(),
             sequence: TerminalSequence::new(2),
-            bytes: signal_terminal::TerminalTranscriptBytes::new(b"second".to_vec()),
+            bytes: signal_terminal::TerminalTranscriptBytes::new(signal_bytes(b"second")),
         })
     );
 }

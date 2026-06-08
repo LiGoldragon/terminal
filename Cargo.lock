@@ -138,7 +138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -373,12 +373,12 @@ dependencies = [
 [[package]]
 name = "meta-signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=main#fc86c5fea137397d0d0ec1d13866cf9cbd20536d"
+source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=main#7a13ba0c0edcccc073bf2fa6c054c3b2c37edf26"
 dependencies = [
  "nota-next",
  "rkyv",
- "signal-engine-management",
  "signal-frame",
+ "signal-persona",
  "signal-terminal",
  "thiserror 2.0.18",
 ]
@@ -682,7 +682,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -830,14 +830,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 
 [[package]]
-name = "signal-engine-management"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-engine-management.git?branch=main#75e7ff7eaad7e2e7b87d38fd116456372a059dc3"
-dependencies = [
- "signal-persona",
-]
-
-[[package]]
 name = "signal-frame"
 version = "0.2.1"
 source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#166bda84dc63bf8461fff11a41c43d6a1c92a941"
@@ -893,21 +885,11 @@ dependencies = [
 [[package]]
 name = "signal-persona"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona.git?branch=main#c8e07396e37afd051d6485b86e9820b2031d37b4"
+source = "git+https://github.com/LiGoldragon/signal-persona.git?branch=main#ae9cf2629471097dd81e805e704c5da94ba4b16a"
 dependencies = [
  "nota-next",
  "rkyv",
  "signal-frame",
- "signal-persona-origin",
-]
-
-[[package]]
-name = "signal-persona-origin"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-persona-origin.git?branch=main#da2bee2e1a178f24a62d1eb5d3985e3937a79b5b"
-dependencies = [
- "nota-next",
- "rkyv",
 ]
 
 [[package]]
@@ -921,14 +903,13 @@ dependencies = [
 
 [[package]]
 name = "signal-terminal"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#46c92b589adcf076428fd2b38b908f905c8e46e6"
+version = "0.2.0"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#0a11eb3717b0e74d31cfd1f808a54e8d3b7229b2"
 dependencies = [
  "nota-next",
  "rkyv",
- "signal-engine-management",
+ "schema-rust-next",
  "signal-frame",
- "signal-persona-origin",
  "thiserror 2.0.18",
 ]
 
@@ -983,10 +964,9 @@ dependencies = [
  "rkyv",
  "schema-rust-next",
  "sema-engine",
- "signal-engine-management",
  "signal-frame",
  "signal-hook",
- "signal-persona-origin",
+ "signal-persona",
  "signal-terminal",
  "terminal-cell",
  "thiserror 2.0.18",
@@ -998,17 +978,21 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#fa7aa697e21162da7a387582ee0b856d6b5e92c6"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#3c81cd272e9e68863ca88e1e9e0bd2b29a9d770e"
 dependencies = [
  "crossterm",
  "kameo",
+ "nota-next",
  "portable-pty",
  "regex",
+ "rkyv",
+ "schema-rust-next",
  "signal-frame",
  "signal-hook",
  "signal-terminal",
  "thiserror 2.0.18",
  "tokio",
+ "triad-runtime",
  "vt100",
 ]
 

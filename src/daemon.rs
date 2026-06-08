@@ -7,8 +7,7 @@ use signal_frame::{
     SubReply,
 };
 use signal_terminal::{
-    SubscribeTerminalWorkerLifecycle, TerminalEvent, TerminalFrame, TerminalFrameBody as FrameBody,
-    TerminalReply, TerminalRequest,
+    Frame, FrameBody, Input, Output, SubscribeTerminalWorkerLifecycle, TerminalEvent,
 };
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
@@ -76,7 +75,7 @@ impl TerminalEngine {
         let request = TerminalSignalRequest::decode(body.bytes())?;
         let exchange = request.exchange();
         match request.into_request() {
-            TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) => {
+            Input::SubscribeTerminalWorkerLifecycle(subscription) => {
                 self.handle_subscription(connection, exchange, subscription)
                     .await?;
             }
@@ -188,12 +187,12 @@ impl ComponentDaemon for TerminalProcessDaemon {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalSignalRequest {
     exchange: ExchangeIdentifier,
-    request: TerminalRequest,
+    request: Input,
 }
 
 impl TerminalSignalRequest {
     fn decode(body: &[u8]) -> Result<Self, signal_frame::FrameError> {
-        match TerminalFrame::decode(body)?.into_body() {
+        match Frame::decode(body)?.into_body() {
             FrameBody::Request { exchange, request } => {
                 Ok(Self::new(exchange, Self::single_payload(request)?))
             }
@@ -201,7 +200,7 @@ impl TerminalSignalRequest {
         }
     }
 
-    fn new(exchange: ExchangeIdentifier, request: TerminalRequest) -> Self {
+    fn new(exchange: ExchangeIdentifier, request: Input) -> Self {
         Self { exchange, request }
     }
 
@@ -209,13 +208,11 @@ impl TerminalSignalRequest {
         self.exchange
     }
 
-    fn into_request(self) -> TerminalRequest {
+    fn into_request(self) -> Input {
         self.request
     }
 
-    fn single_payload(
-        request: Request<TerminalRequest>,
-    ) -> Result<TerminalRequest, signal_frame::FrameError> {
+    fn single_payload(request: Request<Input>) -> Result<Input, signal_frame::FrameError> {
         let (request, tail) = request.payloads.into_head_and_tail();
         if tail.is_empty() {
             Ok(request)
@@ -228,16 +225,16 @@ impl TerminalSignalRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalSignalReply {
     exchange: ExchangeIdentifier,
-    reply: TerminalReply,
+    reply: Output,
 }
 
 impl TerminalSignalReply {
-    fn new(exchange: ExchangeIdentifier, reply: TerminalReply) -> Self {
+    fn new(exchange: ExchangeIdentifier, reply: Output) -> Self {
         Self { exchange, reply }
     }
 
     async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = TerminalFrame::new(FrameBody::Reply {
+        let frame = Frame::new(FrameBody::Reply {
             exchange: self.exchange,
             reply: Reply::committed(NonEmpty::single(SubReply::Ok(self.reply))),
         });
@@ -374,7 +371,7 @@ impl TerminalSubscriptionRelay {
         }
     }
 
-    async fn record_reply(&self, reply: TerminalReply) -> Result<(), TerminalDaemonError> {
+    async fn record_reply(&self, reply: Output) -> Result<(), TerminalDaemonError> {
         self.supervisor
             .ask(TerminalSupervisorObservedEvent::new(reply))
             .await
@@ -385,18 +382,18 @@ impl TerminalSubscriptionRelay {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalSignalRequestFrame {
-    request: TerminalRequest,
+    request: Input,
 }
 
 impl TerminalSignalRequestFrame {
     fn new(subscription: SubscribeTerminalWorkerLifecycle) -> Self {
         Self {
-            request: TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription),
+            request: Input::SubscribeTerminalWorkerLifecycle(subscription),
         }
     }
 
     async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = TerminalFrame::new(FrameBody::Request {
+        let frame = Frame::new(FrameBody::Request {
             exchange: TerminalSyntheticExchange::new().into_exchange(),
             request: Request::from_payload(self.request),
         });
@@ -410,7 +407,7 @@ impl TerminalSignalRequestFrame {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TerminalSignalOutput {
-    Reply(TerminalReply),
+    Reply(Output),
     Event(TerminalSignalEvent),
 }
 
@@ -419,7 +416,7 @@ impl TerminalSignalOutput {
         let body = LengthPrefixedCodec::default()
             .read_body_async(stream)
             .await?;
-        match TerminalFrame::decode(body.bytes())?.into_body() {
+        match Frame::decode(body.bytes())?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
                     SubReply::Ok(reply) => Ok(Self::Reply(reply)),
@@ -459,7 +456,7 @@ struct TerminalSignalEvent {
 
 impl TerminalSignalEvent {
     async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = TerminalFrame::new(FrameBody::SubscriptionEvent {
+        let frame = Frame::new(FrameBody::SubscriptionEvent {
             event_identifier: self.event_identifier,
             token: self.token,
             event: self.event,

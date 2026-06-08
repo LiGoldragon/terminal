@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use signal_terminal::{
-    TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEventObservation,
-    TerminalGeneration, TerminalName, TerminalObservationSequence, TerminalOperationKind,
-    TerminalReady, TerminalReply, TerminalSessionArchiveObservation, TerminalSessionArchiveState,
-    TerminalSessionHealthObservation, TerminalSessionObservation, TerminalSessionState,
-    TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
+    Output, TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState,
+    TerminalEventObservation, TerminalGeneration, TerminalName, TerminalObservationSequence,
+    TerminalOperationKind, TerminalReady, TerminalSessionArchiveObservation,
+    TerminalSessionArchiveState, TerminalSessionHealthObservation, TerminalSessionObservation,
+    TerminalSessionState, TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
 };
 use terminal::Error;
 use terminal::registry::SessionRegistration;
@@ -79,7 +79,7 @@ fn terminal_tables_register_contract_record_families_in_sema_engine() {
 fn terminal_sessions_are_component_sema_records() {
     let fixture = RegistryFixture::new("component-sema-records");
     let tables = fixture.tables();
-    let terminal = TerminalName::new("operator");
+    let terminal = TerminalName::new("operator".to_string());
     let session = TerminalSessionObservation::ready(
         terminal.clone(),
         "/tmp/operator.control.sock",
@@ -107,7 +107,7 @@ fn terminal_sessions_are_component_sema_records() {
 #[test]
 fn terminal_daemon_registration_writes_named_session_with_typed_control_and_data_paths() {
     let fixture = RegistryFixture::new("daemon-registration");
-    let terminal = TerminalName::new("assistant");
+    let terminal = TerminalName::new("assistant".to_string());
 
     SessionRegistration::ready(
         fixture.store(),
@@ -137,13 +137,14 @@ fn terminal_daemon_registration_writes_named_session_with_typed_control_and_data
     assert_eq!(health.len(), 1);
     assert_eq!(health[0].terminal(), &terminal);
     assert_eq!(health[0].state(), TerminalSessionState::Ready);
-    assert_eq!(health[0].generation(), TerminalGeneration::new(1));
+    assert_eq!(health[0].generation(), &TerminalGeneration::new(1));
 }
 
 #[test]
 fn terminal_resolve_reports_missing_session() {
     let fixture = RegistryFixture::new("missing-session");
-    let request = SessionResolveRequest::new(fixture.store(), TerminalName::new("missing"));
+    let request =
+        SessionResolveRequest::new(fixture.store(), TerminalName::new("missing".to_string()));
 
     let error = request
         .run(Vec::new())
@@ -158,7 +159,7 @@ fn terminal_resolve_reports_missing_session() {
 fn terminal_tables_cover_t6_state_records() {
     let fixture = RegistryFixture::new("t6-state-records");
     let tables = fixture.tables();
-    let terminal = TerminalName::new("operator");
+    let terminal = TerminalName::new("operator".to_string());
 
     tables
         .put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
@@ -171,7 +172,7 @@ fn terminal_tables_cover_t6_state_records() {
         .put_terminal_event(&TerminalEventObservation::new(
             TerminalObservationSequence::new(1),
             terminal.clone(),
-            TerminalReply::from(TerminalReady {
+            Output::from(TerminalReady {
                 terminal: terminal.clone(),
                 generation: TerminalGeneration::new(1),
             }),

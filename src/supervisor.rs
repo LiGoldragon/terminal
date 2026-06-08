@@ -10,17 +10,15 @@ use meta_signal_terminal::{
     MetaTerminalOperationKind, MetaTerminalReply, MetaTerminalRequest,
     MetaTerminalRequestUnimplemented, MetaTerminalUnimplementedReason,
 };
-use signal_engine_management::WirePath;
 use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
     StreamEventIdentifier, SubReply, SubscriptionTokenInner,
 };
 use signal_terminal::{
-    ResolveSession, SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
-    TerminalDaemonConfiguration, TerminalDeliveryAttemptObservation, TerminalEvent,
-    TerminalEventObservation, TerminalFrame, TerminalFrameBody as FrameBody, TerminalName,
+    Frame, FrameBody, Input, Output, ResolveSession, SessionEntry, SessionList, SessionResolved,
+    SubscribeTerminalWorkerLifecycle, TerminalDaemonConfiguration,
+    TerminalDeliveryAttemptObservation, TerminalEvent, TerminalEventObservation, TerminalName,
     TerminalObservationSequence, TerminalOperationKind, TerminalRejected, TerminalRejectionReason,
-    TerminalReply, TerminalRequest,
 };
 
 use crate::contract::TerminalTransportBinding;
@@ -126,7 +124,7 @@ impl TerminalSupervisorDaemon {
         })
     }
 
-    pub fn serve_one(self) -> Result<TerminalReply> {
+    pub fn serve_one(self) -> Result<Output> {
         self.bind()?.serve_one()
     }
 
@@ -134,10 +132,10 @@ impl TerminalSupervisorDaemon {
         runtime: &tokio::runtime::Runtime,
         supervisor: &ActorRef<TerminalSupervisor>,
         stream: UnixStream,
-    ) -> Result<TerminalReply> {
+    ) -> Result<Output> {
         let mut connection = TerminalSupervisorConnection::from_stream(stream);
         let request = connection.read_signal_request()?;
-        if let TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) = request {
+        if let Input::SubscribeTerminalWorkerLifecycle(subscription) = request {
             return Self::handle_subscription(runtime, supervisor, connection, subscription);
         }
         let event = runtime.block_on(async {
@@ -157,7 +155,7 @@ impl TerminalSupervisorDaemon {
         supervisor: &ActorRef<TerminalSupervisor>,
         mut client: TerminalSupervisorConnection,
         subscription: SubscribeTerminalWorkerLifecycle,
-    ) -> Result<TerminalReply> {
+    ) -> Result<Output> {
         let start = runtime.block_on(async {
             supervisor
                 .ask(TerminalSupervisorSubscriptionRequest::new(subscription))
@@ -182,12 +180,12 @@ impl TerminalSupervisorDaemon {
         supervisor: &ActorRef<TerminalSupervisor>,
         mut client: TerminalSupervisorConnection,
         plan: TerminalSupervisorSubscriptionPlan,
-    ) -> Result<TerminalReply> {
+    ) -> Result<Output> {
         let mut cell = BufReader::new(UnixStream::connect(plan.socket_path())?);
         let codec = TerminalSupervisorFrameCodec::default();
         codec.write_request(
             cell.get_mut(),
-            TerminalRequest::SubscribeTerminalWorkerLifecycle(plan.into_subscription()),
+            Input::SubscribeTerminalWorkerLifecycle(plan.into_subscription()),
         )?;
 
         let mut first = None;
@@ -237,7 +235,7 @@ impl BoundTerminalSupervisorDaemon {
         &self.socket
     }
 
-    pub fn serve_one(self) -> Result<TerminalReply> {
+    pub fn serve_one(self) -> Result<Output> {
         let (stream, _address) = self.listener.accept()?;
         let event =
             TerminalSupervisorDaemon::handle_connection(&self.runtime, &self.supervisor, stream)?;
@@ -273,11 +271,11 @@ impl TerminalSupervisorConnection {
         }
     }
 
-    pub fn read_signal_request(&mut self) -> Result<TerminalRequest> {
+    pub fn read_signal_request(&mut self) -> Result<Input> {
         self.signal.read_request(&mut self.stream)
     }
 
-    pub fn write_signal_reply(&mut self, event: TerminalReply) -> Result<()> {
+    pub fn write_signal_reply(&mut self, event: Output) -> Result<()> {
         let stream = self.stream.get_mut();
         self.signal.write_reply(stream, event)
     }
@@ -300,7 +298,7 @@ impl TerminalSupervisorFrameCodec {
         }
     }
 
-    pub fn read_frame(&self, reader: &mut impl Read) -> Result<TerminalFrame> {
+    pub fn read_frame(&self, reader: &mut impl Read) -> Result<Frame> {
         let mut prefix = [0_u8; 4];
         reader.read_exact(&mut prefix)?;
         let length = u32::from_be_bytes(prefix) as usize;
@@ -313,10 +311,10 @@ impl TerminalSupervisorFrameCodec {
         bytes.extend_from_slice(&prefix);
         bytes.resize(4 + length, 0);
         reader.read_exact(&mut bytes[4..])?;
-        Ok(TerminalFrame::decode_length_prefixed(&bytes)?)
+        Ok(Frame::decode_length_prefixed(&bytes)?)
     }
 
-    pub fn read_request(&self, reader: &mut impl Read) -> Result<TerminalRequest> {
+    pub fn read_request(&self, reader: &mut impl Read) -> Result<Input> {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Request { request, .. } => {
                 let (payload, tail) = request.payloads.into_head_and_tail();
@@ -337,8 +335,8 @@ impl TerminalSupervisorFrameCodec {
         }
     }
 
-    pub fn write_request(&self, writer: &mut impl Write, request: TerminalRequest) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::Request {
+    pub fn write_request(&self, writer: &mut impl Write, request: Input) -> Result<()> {
+        let frame = Frame::new(FrameBody::Request {
             exchange: synthetic_exchange(),
             request: Request::from_payload(request),
         });
@@ -348,12 +346,12 @@ impl TerminalSupervisorFrameCodec {
         Ok(())
     }
 
-    pub fn write_event(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
+    pub fn write_event(&self, writer: &mut impl Write, event: Output) -> Result<()> {
         self.write_reply(writer, event)
     }
 
-    pub fn write_reply(&self, writer: &mut impl Write, event: TerminalReply) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::Reply {
+    pub fn write_reply(&self, writer: &mut impl Write, event: Output) -> Result<()> {
+        let frame = Frame::new(FrameBody::Reply {
             exchange: synthetic_exchange(),
             reply: Reply::committed(NonEmpty::single(SubReply::Ok(event))),
         });
@@ -364,7 +362,7 @@ impl TerminalSupervisorFrameCodec {
     }
 
     pub fn write_stream_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
-        let frame = TerminalFrame::new(FrameBody::SubscriptionEvent {
+        let frame = Frame::new(FrameBody::SubscriptionEvent {
             event_identifier: synthetic_stream_event(),
             token: SubscriptionTokenInner::new(1),
             event,
@@ -375,11 +373,11 @@ impl TerminalSupervisorFrameCodec {
         Ok(())
     }
 
-    pub fn read_event(&self, reader: &mut impl Read) -> Result<TerminalReply> {
+    pub fn read_event(&self, reader: &mut impl Read) -> Result<Output> {
         self.read_reply(reader)
     }
 
-    pub fn read_reply(&self, reader: &mut impl Read) -> Result<TerminalReply> {
+    pub fn read_reply(&self, reader: &mut impl Read) -> Result<Output> {
         match self.read_frame(reader)?.into_body() {
             FrameBody::Reply { reply, .. } => match reply {
                 Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
@@ -438,7 +436,7 @@ impl Default for TerminalSupervisorFrameCodec {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalSupervisorSignalOutput {
-    Reply(TerminalReply),
+    Reply(Output),
     Event(TerminalEvent),
 }
 
@@ -500,23 +498,15 @@ impl TerminalSupervisor {
         }
     }
 
-    fn event_for_request(
-        &mut self,
-        sequence: u64,
-        request: TerminalRequest,
-    ) -> Result<TerminalReply> {
+    fn event_for_request(&mut self, sequence: u64, request: Input) -> Result<Output> {
         match request {
-            TerminalRequest::ListSessions(list) => self.list_sessions(list),
-            TerminalRequest::ResolveSession(resolve) => self.resolve_session(resolve),
+            Input::ListSessions(list) => self.list_sessions(list),
+            Input::ResolveSession(resolve) => self.resolve_session(resolve),
             other => self.forward_terminal_request(sequence, other),
         }
     }
 
-    fn forward_terminal_request(
-        &mut self,
-        sequence: u64,
-        request: TerminalRequest,
-    ) -> Result<TerminalReply> {
+    fn forward_terminal_request(&mut self, sequence: u64, request: Input) -> Result<Output> {
         let terminal = TerminalRequestTerminal::from_request(&request)?.into_terminal();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
@@ -525,7 +515,7 @@ impl TerminalSupervisor {
             request.operation_kind(),
         ))?;
         let Some(session) = tables.session(&terminal)? else {
-            let event: TerminalReply = TerminalRejected {
+            let event: Output = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
@@ -542,31 +532,35 @@ impl TerminalSupervisor {
         Ok(event)
     }
 
-    fn list_sessions(&self, _list: signal_terminal::ListSessions) -> Result<TerminalReply> {
+    fn list_sessions(&self, _list: signal_terminal::ListSessions) -> Result<Output> {
         let tables = TerminalTables::open(&self.store)?;
         let entries = tables
             .sessions()?
             .into_iter()
             .map(|session| SessionEntry {
                 name: session.terminal().clone(),
-                data_socket_path: WirePath::new(session.data_socket_path().as_str()),
+                data_socket_path: signal_terminal::WirePath::new(
+                    session.data_socket_path().as_str().to_string(),
+                ),
             })
             .collect();
-        Ok(SessionList { entries }.into())
+        Ok(SessionList(entries).into())
     }
 
-    fn resolve_session(&self, resolve: ResolveSession) -> Result<TerminalReply> {
+    fn resolve_session(&self, resolve: ResolveSession) -> Result<Output> {
         let tables = TerminalTables::open(&self.store)?;
-        let Some(session) = tables.session(&resolve.name)? else {
+        let Some(session) = tables.session(&resolve.0)? else {
             return Ok(TerminalRejected {
-                terminal: resolve.name,
+                terminal: resolve.0,
                 reason: TerminalRejectionReason::NotConnected,
             }
             .into());
         };
         Ok(SessionResolved {
             name: session.terminal().clone(),
-            data_socket_path: WirePath::new(session.data_socket_path().as_str()),
+            data_socket_path: signal_terminal::WirePath::new(
+                session.data_socket_path().as_str().to_string(),
+            ),
         }
         .into())
     }
@@ -576,7 +570,7 @@ impl TerminalSupervisor {
         sequence: u64,
         subscription: SubscribeTerminalWorkerLifecycle,
     ) -> Result<TerminalSupervisorSubscriptionStart> {
-        let terminal = subscription.terminal.clone();
+        let terminal = subscription.0.clone();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
             TerminalObservationSequence::new(sequence),
@@ -584,7 +578,7 @@ impl TerminalSupervisor {
             TerminalOperationKind::SubscribeTerminalWorkerLifecycle,
         ))?;
         let Some(session) = tables.session(&terminal)? else {
-            let event: TerminalReply = TerminalRejected {
+            let event: Output = TerminalRejected {
                 terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
@@ -600,11 +594,7 @@ impl TerminalSupervisor {
         ))
     }
 
-    fn record_terminal_event(
-        &mut self,
-        tables: &TerminalTables,
-        event: TerminalReply,
-    ) -> Result<()> {
+    fn record_terminal_event(&mut self, tables: &TerminalTables, event: Output) -> Result<()> {
         self.recorded_event_count = self.recorded_event_count.saturating_add(1);
         let Some(terminal) = TerminalRequestTerminal::from_event(&event) else {
             return Ok(());
@@ -689,17 +679,17 @@ impl Message<ReadTerminalSupervisorState> for TerminalSupervisor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorRequest {
-    request: TerminalRequest,
+    request: Input,
 }
 
 impl TerminalSupervisorRequest {
-    pub fn new(request: TerminalRequest) -> Self {
+    pub fn new(request: Input) -> Self {
         Self { request }
     }
 }
 
 impl Message<TerminalSupervisorRequest> for TerminalSupervisor {
-    type Reply = Result<TerminalReply>;
+    type Reply = Result<Output>;
 
     async fn handle(
         &mut self,
@@ -766,11 +756,11 @@ impl Message<TerminalSupervisorSubscriptionRequest> for TerminalSupervisor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorObservedEvent {
-    event: TerminalReply,
+    event: Output,
 }
 
 impl TerminalSupervisorObservedEvent {
-    pub fn new(event: TerminalReply) -> Self {
+    pub fn new(event: Output) -> Self {
         Self { event }
     }
 }
@@ -790,7 +780,7 @@ impl Message<TerminalSupervisorObservedEvent> for TerminalSupervisor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalSupervisorSubscriptionStart {
-    Immediate(TerminalReply),
+    Immediate(Output),
     Stream(TerminalSupervisorSubscriptionPlan),
 }
 
@@ -823,23 +813,23 @@ struct TerminalRequestTerminal {
 }
 
 impl TerminalRequestTerminal {
-    fn from_request(request: &TerminalRequest) -> Result<Self> {
+    fn from_request(request: &Input) -> Result<Self> {
         let terminal = match request {
-            TerminalRequest::TerminalConnection(payload) => payload.terminal.clone(),
-            TerminalRequest::TerminalInput(payload) => payload.terminal.clone(),
-            TerminalRequest::TerminalResize(payload) => payload.terminal.clone(),
-            TerminalRequest::TerminalDetachment(payload) => payload.terminal.clone(),
-            TerminalRequest::TerminalCapture(payload) => payload.terminal.clone(),
-            TerminalRequest::RegisterPromptPattern(payload) => payload.terminal.clone(),
-            TerminalRequest::UnregisterPromptPattern(payload) => payload.terminal.clone(),
-            TerminalRequest::ListPromptPatterns(payload) => payload.terminal.clone(),
-            TerminalRequest::AcquireInputGate(payload) => payload.terminal.clone(),
-            TerminalRequest::ReleaseInputGate(payload) => payload.terminal.clone(),
-            TerminalRequest::WriteInjection(payload) => payload.terminal.clone(),
-            TerminalRequest::SubscribeTerminalWorkerLifecycle(payload) => payload.terminal.clone(),
-            TerminalRequest::TerminalWorkerLifecycleRetraction(payload) => payload.terminal.clone(),
-            TerminalRequest::ResolveSession(payload) => payload.name.clone(),
-            TerminalRequest::ListSessions(_) => {
+            Input::TerminalConnection(payload) => payload.0.clone(),
+            Input::TerminalInput(payload) => payload.terminal.clone(),
+            Input::TerminalResize(payload) => payload.terminal.clone(),
+            Input::TerminalDetachment(payload) => payload.terminal.clone(),
+            Input::TerminalCapture(payload) => payload.0.clone(),
+            Input::RegisterPromptPattern(payload) => payload.terminal.clone(),
+            Input::UnregisterPromptPattern(payload) => payload.terminal.clone(),
+            Input::ListPromptPatterns(payload) => payload.0.clone(),
+            Input::AcquireInputGate(payload) => payload.terminal.clone(),
+            Input::ReleaseInputGate(payload) => payload.terminal.clone(),
+            Input::WriteInjection(payload) => payload.terminal.clone(),
+            Input::SubscribeTerminalWorkerLifecycle(payload) => payload.0.clone(),
+            Input::TerminalWorkerLifecycleRetraction(payload) => payload.0.clone(),
+            Input::ResolveSession(payload) => payload.0.clone(),
+            Input::ListSessions(_) => {
                 return Err(Error::InvalidArgument {
                     detail: "ListSessions is a registry query and has no terminal identity"
                         .to_string(),
@@ -849,31 +839,32 @@ impl TerminalRequestTerminal {
         Ok(Self { terminal })
     }
 
-    fn from_event(event: &TerminalReply) -> Option<Self> {
+    fn from_event(event: &Output) -> Option<Self> {
         let terminal = match event {
-            TerminalReply::TerminalReady(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalInputAccepted(payload) => payload.terminal.clone(),
-            TerminalReply::TranscriptDelta(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalResized(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalCaptured(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalDetached(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalExited(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalRejected(payload) => payload.terminal.clone(),
-            TerminalReply::PromptPatternRegistered(payload) => payload.terminal.clone(),
-            TerminalReply::PromptPatternUnregistered(payload) => payload.terminal.clone(),
-            TerminalReply::PromptPatternList(payload) => payload.terminal.clone(),
-            TerminalReply::GateAcquired(payload) => payload.terminal.clone(),
-            TerminalReply::GateBusy(payload) => payload.terminal.clone(),
-            TerminalReply::GateReleased(payload) => payload.terminal.clone(),
-            TerminalReply::InjectionAck(payload) => payload.terminal.clone(),
-            TerminalReply::InjectionRejected(payload) => payload.terminal.clone(),
-            TerminalReply::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
-            TerminalReply::SubscriptionRetracted(payload) => payload.token.terminal.clone(),
-            TerminalReply::SessionResolved(payload) => payload.name.clone(),
-            TerminalReply::SessionList(_) => return None,
+            Output::TerminalReady(payload) => payload.terminal.clone(),
+            Output::TerminalInputAccepted(payload) => payload.terminal.clone(),
+            Output::TranscriptDelta(payload) => payload.terminal.clone(),
+            Output::TerminalResized(payload) => payload.terminal.clone(),
+            Output::TerminalCaptured(payload) => payload.terminal.clone(),
+            Output::TerminalDetached(payload) => payload.terminal.clone(),
+            Output::TerminalExited(payload) => payload.terminal.clone(),
+            Output::TerminalRejected(payload) => payload.terminal.clone(),
+            Output::PromptPatternRegistered(payload) => payload.terminal.clone(),
+            Output::PromptPatternUnregistered(payload) => payload.terminal.clone(),
+            Output::PromptPatternList(payload) => payload.terminal.clone(),
+            Output::GateAcquired(payload) => payload.terminal.clone(),
+            Output::GateBusy(payload) => payload.terminal.clone(),
+            Output::GateReleased(payload) => payload.terminal.clone(),
+            Output::InjectionAck(payload) => payload.terminal.clone(),
+            Output::InjectionRejected(payload) => payload.terminal.clone(),
+            Output::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
+            Output::SubscriptionRetracted(payload) => payload.0.0.clone(),
+            Output::SessionResolved(payload) => payload.name.clone(),
+            Output::SessionList(_) => return None,
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
             // (the streaming-event payload); routed via
             // StreamingFrameBody::SubscriptionEvent, not Reply.
+            Output::Event(_) => return None,
         };
         Some(Self { terminal })
     }

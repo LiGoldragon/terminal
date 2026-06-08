@@ -74,8 +74,8 @@ impl SessionLine {
             self.session.control_socket_path().as_str(),
             self.session.data_socket_path().as_str(),
             self.session.state().as_str(),
-            self.session.generation().into_u64(),
-            self.session.transcript_sequence().into_u64()
+            self.session.generation().clone().into_u64(),
+            self.session.transcript_sequence().clone().into_u64()
         )?;
         Ok(())
     }
@@ -98,9 +98,11 @@ impl SessionArguments {
                 "--terminal" | "--name" => {
                     terminal = arguments
                         .next()
-                        .map(|value| TerminalName::new(value.to_string_lossy()))
+                        .map(|value| TerminalName::new(value.to_string_lossy().into_owned()))
                 }
-                value if terminal.is_none() => terminal = Some(TerminalName::new(value)),
+                value if terminal.is_none() => {
+                    terminal = Some(TerminalName::new(value.to_string()))
+                }
                 _ => {}
             }
         }
@@ -118,7 +120,7 @@ impl SessionArguments {
     fn terminal(&self) -> TerminalName {
         self.terminal
             .clone()
-            .unwrap_or_else(|| TerminalName::new("default"))
+            .unwrap_or_else(|| TerminalName::new("default".to_string()))
     }
 }
 
@@ -153,7 +155,7 @@ impl SessionRegistration {
         tables.put_session_health(&TerminalSessionHealthObservation::new(
             self.session.terminal().clone(),
             self.session.state(),
-            self.session.generation(),
+            self.session.generation().clone(),
         ))
     }
 }

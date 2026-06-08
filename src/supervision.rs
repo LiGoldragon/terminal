@@ -7,13 +7,13 @@ use std::thread::JoinHandle;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_engine_management::{
+use signal_frame::{ExchangeIdentifier, NonEmpty, Reply, SubReply};
+use signal_persona::{
     ComponentHealth, ComponentHealthReport, ComponentIdentity, ComponentKind, ComponentName,
     ComponentReady, EngineManagementProtocolVersion, Frame as SupervisionFrame, FrameBody,
     Operation as SupervisionRequest, Presence, Query as SupervisionQuery,
     Reply as SupervisionReply, StopAcknowledgement,
 };
-use signal_frame::{ExchangeIdentifier, NonEmpty, Reply, SubReply};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SupervisionProfile {

@@ -67,7 +67,7 @@ impl Configuration {
         SupervisionListener::new(
             SupervisionProfile::terminal(),
             self.supervision_socket_path.clone(),
-            SupervisionSocketMode::from_octal(self.raw.supervision_socket_mode.into_u32()),
+            SupervisionSocketMode::from_octal(self.raw.supervision_socket_mode.clone().into_u32()),
         )
     }
 }
@@ -79,7 +79,7 @@ impl DaemonConfiguration for Configuration {
 
     fn socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            self.raw.terminal_socket_mode.into_u32(),
+            self.raw.terminal_socket_mode.clone().into_u32(),
         ))
     }
 
@@ -97,7 +97,7 @@ impl DaemonConfiguration for Configuration {
 
     fn meta_socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            self.raw.meta_terminal_socket_mode.into_u32(),
+            self.raw.meta_terminal_socket_mode.clone().into_u32(),
         ))
     }
 }

@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use signal_terminal::{
-    AcquireInputGate, ListPromptPatterns, RegisterPromptPattern, ReleaseInputGate, TerminalCapture,
-    TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput, TerminalName,
-    TerminalReady, TerminalRejected, TerminalRejectionReason, TerminalReply, TerminalRequest,
-    TerminalResize, TerminalSequence, TerminalTranscriptBytes, TranscriptDelta,
-    UnregisterPromptPattern, WriteInjection,
+    AcquireInputGate, Input, ListPromptPatterns, Output, RegisterPromptPattern, ReleaseInputGate,
+    TerminalCapture, TerminalConnection, TerminalDetached, TerminalGeneration, TerminalInput,
+    TerminalName, TerminalReady, TerminalRejected, TerminalRejectionReason, TerminalResize,
+    TerminalSequence, TerminalTranscriptBytes, TranscriptDelta, UnregisterPromptPattern,
+    WriteInjection,
 };
 
 use crate::error::{Error, Result};
@@ -38,40 +38,48 @@ impl TerminalTransportBinding {
     }
 
     pub fn generation(&self) -> TerminalGeneration {
-        self.generation
+        self.generation.clone()
     }
 
     pub fn transcript_sequence(&self) -> TerminalSequence {
-        self.transcript_sequence
+        self.transcript_sequence.clone()
     }
 
-    pub fn ready_event(&self) -> TerminalReply {
+    pub fn ready_event(&self) -> Output {
         TerminalReady {
             terminal: self.terminal.clone(),
-            generation: self.generation,
+            generation: self.generation.clone(),
         }
         .into()
     }
 
-    pub fn transcript_event(&mut self, bytes: impl Into<Vec<u8>>) -> TerminalReply {
-        self.transcript_sequence =
-            TerminalSequence::new(self.transcript_sequence.into_u64().saturating_add(1));
+    pub fn transcript_event(&mut self, bytes: impl Into<Vec<u8>>) -> Output {
+        self.transcript_sequence = TerminalSequence::new(
+            self.transcript_sequence
+                .clone()
+                .into_u64()
+                .saturating_add(1),
+        );
         TranscriptDelta {
             terminal: self.terminal.clone(),
-            sequence: self.transcript_sequence,
-            bytes: TerminalTranscriptBytes::new(bytes.into()),
+            sequence: self.transcript_sequence.clone(),
+            bytes: TerminalTranscriptBytes::new(Self::bytes_to_signal_bytes(&bytes.into())),
         }
         .into()
     }
 
-    pub fn handle_request(&mut self, request: TerminalRequest) -> Result<TerminalReply> {
+    /// Lower terminal-cell's `u8` byte buffer into the schema-emitted
+    /// `Integer` (`u64`) byte vector the signal-terminal contract carries.
+    fn bytes_to_signal_bytes(bytes: &[u8]) -> Vec<u64> {
+        bytes.iter().map(|byte| u64::from(*byte)).collect()
+    }
+
+    pub fn handle_request(&mut self, request: Input) -> Result<Output> {
         match request {
-            TerminalRequest::TerminalConnection(connection) => {
-                Ok(self.handle_connection(connection))
-            }
-            TerminalRequest::TerminalInput(input) => self.handle_input(input),
-            TerminalRequest::TerminalResize(resize) => self.handle_resize(resize),
-            TerminalRequest::TerminalDetachment(detachment) => {
+            Input::TerminalConnection(connection) => Ok(self.handle_connection(connection)),
+            Input::TerminalInput(input) => self.handle_input(input),
+            Input::TerminalResize(resize) => self.handle_resize(resize),
+            Input::TerminalDetachment(detachment) => {
                 if !self.contains_terminal(&detachment.terminal) {
                     return Ok(Self::rejected(
                         detachment.terminal,
@@ -80,122 +88,93 @@ impl TerminalTransportBinding {
                 }
                 Ok(TerminalDetached {
                     terminal: detachment.terminal,
-                    generation: self.generation,
+                    generation: self.generation.clone(),
                     reason: detachment.reason,
                 }
                 .into())
             }
-            TerminalRequest::TerminalCapture(capture) => self.handle_capture(capture),
-            TerminalRequest::RegisterPromptPattern(registration) => {
+            Input::TerminalCapture(capture) => self.handle_capture(capture),
+            Input::RegisterPromptPattern(registration) => {
                 self.handle_register_prompt_pattern(registration)
             }
-            TerminalRequest::UnregisterPromptPattern(unregistration) => {
+            Input::UnregisterPromptPattern(unregistration) => {
                 self.handle_unregister_prompt_pattern(unregistration)
             }
-            TerminalRequest::ListPromptPatterns(list) => self.handle_list_prompt_patterns(list),
-            TerminalRequest::AcquireInputGate(acquire) => self.handle_acquire_input_gate(acquire),
-            TerminalRequest::ReleaseInputGate(release) => self.handle_release_input_gate(release),
-            TerminalRequest::WriteInjection(injection) => self.handle_write_injection(injection),
-            TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription) => self
-                .handle_signal_control(
-                    subscription.terminal.clone(),
-                    TerminalRequest::SubscribeTerminalWorkerLifecycle(subscription),
-                ),
-            TerminalRequest::TerminalWorkerLifecycleRetraction(token) => self
-                .handle_signal_control(
-                    token.terminal.clone(),
-                    TerminalRequest::TerminalWorkerLifecycleRetraction(token),
-                ),
-            TerminalRequest::ListSessions(_) | TerminalRequest::ResolveSession(_) => {
-                Err(Error::InvalidArgument {
-                    detail: "session registry queries belong to the consolidated terminal daemon"
-                        .to_string(),
-                })
-            }
+            Input::ListPromptPatterns(list) => self.handle_list_prompt_patterns(list),
+            Input::AcquireInputGate(acquire) => self.handle_acquire_input_gate(acquire),
+            Input::ReleaseInputGate(release) => self.handle_release_input_gate(release),
+            Input::WriteInjection(injection) => self.handle_write_injection(injection),
+            Input::SubscribeTerminalWorkerLifecycle(subscription) => self.handle_signal_control(
+                subscription.0.clone(),
+                Input::SubscribeTerminalWorkerLifecycle(subscription),
+            ),
+            Input::TerminalWorkerLifecycleRetraction(token) => self.handle_signal_control(
+                token.0.clone(),
+                Input::TerminalWorkerLifecycleRetraction(token),
+            ),
+            Input::ListSessions(_) | Input::ResolveSession(_) => Err(Error::InvalidArgument {
+                detail: "session registry queries belong to the consolidated terminal daemon"
+                    .to_string(),
+            }),
         }
     }
 
-    fn handle_connection(&self, connection: TerminalConnection) -> TerminalReply {
-        if !self.contains_terminal(&connection.terminal) {
-            return Self::rejected(connection.terminal, TerminalRejectionReason::NotConnected);
+    fn handle_connection(&self, connection: TerminalConnection) -> Output {
+        if !self.contains_terminal(&connection.0) {
+            return Self::rejected(connection.0, TerminalRejectionReason::NotConnected);
         }
         self.ready_event()
     }
 
-    fn handle_input(&self, input: TerminalInput) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            input.terminal.clone(),
-            TerminalRequest::TerminalInput(input),
-        )
+    fn handle_input(&self, input: TerminalInput) -> Result<Output> {
+        self.handle_signal_control(input.terminal.clone(), Input::TerminalInput(input))
     }
 
-    fn handle_resize(&self, resize: TerminalResize) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            resize.terminal.clone(),
-            TerminalRequest::TerminalResize(resize),
-        )
+    fn handle_resize(&self, resize: TerminalResize) -> Result<Output> {
+        self.handle_signal_control(resize.terminal.clone(), Input::TerminalResize(resize))
     }
 
-    fn handle_capture(&self, capture: TerminalCapture) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            capture.terminal.clone(),
-            TerminalRequest::TerminalCapture(capture),
-        )
+    fn handle_capture(&self, capture: TerminalCapture) -> Result<Output> {
+        self.handle_signal_control(capture.0.clone(), Input::TerminalCapture(capture))
     }
 
     fn handle_register_prompt_pattern(
         &self,
         registration: RegisterPromptPattern,
-    ) -> Result<TerminalReply> {
+    ) -> Result<Output> {
         self.handle_signal_control(
             registration.terminal.clone(),
-            TerminalRequest::RegisterPromptPattern(registration),
+            Input::RegisterPromptPattern(registration),
         )
     }
 
     fn handle_unregister_prompt_pattern(
         &self,
         unregistration: UnregisterPromptPattern,
-    ) -> Result<TerminalReply> {
+    ) -> Result<Output> {
         self.handle_signal_control(
             unregistration.terminal.clone(),
-            TerminalRequest::UnregisterPromptPattern(unregistration),
+            Input::UnregisterPromptPattern(unregistration),
         )
     }
 
-    fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            list.terminal.clone(),
-            TerminalRequest::ListPromptPatterns(list),
-        )
+    fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<Output> {
+        self.handle_signal_control(list.0.clone(), Input::ListPromptPatterns(list))
     }
 
-    fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            acquire.terminal.clone(),
-            TerminalRequest::AcquireInputGate(acquire),
-        )
+    fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<Output> {
+        self.handle_signal_control(acquire.terminal.clone(), Input::AcquireInputGate(acquire))
     }
 
-    fn handle_release_input_gate(&self, release: ReleaseInputGate) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            release.terminal.clone(),
-            TerminalRequest::ReleaseInputGate(release),
-        )
+    fn handle_release_input_gate(&self, release: ReleaseInputGate) -> Result<Output> {
+        self.handle_signal_control(release.terminal.clone(), Input::ReleaseInputGate(release))
     }
 
-    fn handle_write_injection(&self, injection: WriteInjection) -> Result<TerminalReply> {
-        self.handle_signal_control(
-            injection.terminal.clone(),
-            TerminalRequest::WriteInjection(injection),
-        )
+    fn handle_write_injection(&self, injection: WriteInjection) -> Result<Output> {
+        self.handle_signal_control(injection.terminal.clone(), Input::WriteInjection(injection))
     }
 
-    fn handle_signal_control(
-        &self,
-        terminal: TerminalName,
-        request: TerminalRequest,
-    ) -> Result<TerminalReply> {
+    fn handle_signal_control(&self, terminal: TerminalName, request: Input) -> Result<Output> {
         if !self.contains_terminal(&terminal) {
             return Ok(Self::rejected(
                 terminal,
@@ -213,7 +192,7 @@ impl TerminalTransportBinding {
         TerminalSocket::from_control_socket(self.socket_path.clone())
     }
 
-    fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> TerminalReply {
+    fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> Output {
         TerminalRejected { terminal, reason }.into()
     }
 }
