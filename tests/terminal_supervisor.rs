@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -9,7 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use meta_signal_terminal::{
-    CreateSession, MetaTerminalOperationKind, MetaTerminalReply, MetaTerminalRequest,
+    CreateSession, MetaTerminalFrame as MetaFrame, MetaTerminalFrameBody as MetaFrameBody,
+    MetaTerminalOperationKind, MetaTerminalReply, MetaTerminalRequest,
     MetaTerminalRequestUnimplemented, MetaTerminalUnimplementedReason, TerminalCommand,
     TerminalCommandExecutable,
 };
@@ -80,6 +81,10 @@ impl SupervisorFixture {
 
     fn supervisor_socket(&self) -> PathBuf {
         self.root.join("supervisor.sock")
+    }
+
+    fn meta_supervisor_socket(&self) -> PathBuf {
+        self.root.join("meta-supervisor.sock")
     }
 
     fn supervision_socket(&self) -> PathBuf {
@@ -467,10 +472,13 @@ fn terminal_supervisor_answers_component_supervision_relation() {
 
     let fixture = SupervisorFixture::new("supervision");
     let supervision_socket = fixture.supervision_socket();
+    let meta_socket = fixture.meta_supervisor_socket();
     let configuration_path = fixture.root.join("terminal-daemon.rkyv");
     let configuration = TerminalDaemonConfiguration {
         terminal_socket_path: WirePath::new(fixture.supervisor_socket().display().to_string()),
         terminal_socket_mode: WireSocketMode::new(0o600),
+        meta_terminal_socket_path: WirePath::new(meta_socket.display().to_string()),
+        meta_terminal_socket_mode: WireSocketMode::new(0o600),
         supervision_socket_path: WirePath::new(supervision_socket.display().to_string()),
         supervision_socket_mode: WireSocketMode::new(0o600),
         store_path: WirePath::new(fixture.store().as_path().display().to_string()),
@@ -509,6 +517,36 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     assert_eq!(
         supervisor_mode, 0o600,
         "spawned terminal-supervisor applies PERSONA_SOCKET_MODE to its primary socket"
+    );
+
+    wait_for_socket(&meta_socket);
+    let meta_mode = fs::metadata(&meta_socket)
+        .expect("meta socket metadata is readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(meta_mode, 0o600);
+
+    let mut meta_stream = UnixStream::connect(&meta_socket).expect("meta client connects");
+    write_meta_terminal_request(
+        &mut meta_stream,
+        MetaTerminalRequest::CreateSession(CreateSession {
+            name: TerminalName::new("operator"),
+            command: TerminalCommand {
+                executable: TerminalCommandExecutable::new("pi"),
+                arguments: Vec::new(),
+            },
+            environment: Vec::new(),
+            working_directory: None,
+        }),
+    );
+    assert_eq!(
+        read_meta_terminal_reply(&mut meta_stream),
+        MetaTerminalReply::MetaTerminalRequestUnimplemented(MetaTerminalRequestUnimplemented {
+            terminal: TerminalName::new("operator"),
+            operation: MetaTerminalOperationKind::CreateSession,
+            reason: MetaTerminalUnimplementedReason::NotBuiltYet,
+        })
     );
 
     let mut stream = UnixStream::connect(&supervision_socket).expect("client connects");
@@ -711,6 +749,43 @@ fn write_supervision_request(stream: &mut UnixStream, request: SupervisionReques
         .write_all(bytes.as_slice())
         .expect("supervision request writes");
     stream.flush().expect("supervision request flushes");
+}
+
+fn write_meta_terminal_request(stream: &mut UnixStream, request: MetaTerminalRequest) {
+    let frame = MetaFrame::new(MetaFrameBody::Request {
+        exchange: test_exchange(),
+        request: FrameRequest::from_payload(request),
+    });
+    let bytes = frame
+        .encode_length_prefixed()
+        .expect("meta request encodes");
+    stream
+        .write_all(bytes.as_slice())
+        .expect("meta request writes");
+    stream.flush().expect("meta request flushes");
+}
+
+fn read_meta_terminal_reply(stream: &mut UnixStream) -> MetaTerminalReply {
+    let mut prefix = [0_u8; 4];
+    stream.read_exact(&mut prefix).expect("meta reply prefix");
+    let length = u32::from_be_bytes(prefix) as usize;
+    let mut bytes = Vec::with_capacity(4 + length);
+    bytes.extend_from_slice(&prefix);
+    bytes.resize(4 + length, 0);
+    stream.read_exact(&mut bytes[4..]).expect("meta reply body");
+    let frame = MetaFrame::decode_length_prefixed(&bytes).expect("meta reply decodes");
+    match frame.into_body() {
+        MetaFrameBody::Reply { reply, .. } => match reply {
+            signal_frame::Reply::Accepted { per_operation, .. } => {
+                match per_operation.into_head() {
+                    signal_frame::SubReply::Ok(reply) => reply,
+                    other => panic!("expected accepted meta reply, got {other:?}"),
+                }
+            }
+            other => panic!("expected accepted meta frame, got {other:?}"),
+        },
+        other => panic!("expected meta reply frame, got {other:?}"),
+    }
 }
 
 fn test_exchange() -> ExchangeIdentifier {

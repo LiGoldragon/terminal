@@ -1,5 +1,5 @@
-use terminal::{Result, TerminalSupervisorDaemonCommand};
+use terminal::{DaemonEntry, TerminalProcessDaemon};
 
-fn main() -> Result<()> {
-    TerminalSupervisorDaemonCommand::from_environment().run()
+fn main() -> std::process::ExitCode {
+    TerminalProcessDaemon::run_to_exit_code()
 }

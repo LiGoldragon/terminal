@@ -17,14 +17,15 @@ Terminal now carries the schema-derived triad substrate in-tree:
 generate checked-in modules under `src/schema/` through `schema-rust-next`.
 Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
-Nexus, and registry/prompt/lease/injection records at SEMA. The current
-`terminal-supervisor` path is still the active behavior path while the
-generated daemon cutover waits for the adapter that preserves the external
-`signal-terminal` plus terminal meta signal contracts while routing into the
-generated triad nouns. The shared actor-native daemon emitter already has a
-meta listener tier; the remaining work is supervisor-to-component
-consolidation and relation adaptation, not socket-tier substrate. The
-transitional supervisor daemon starts from exactly one signal-encoded/rkyv
+Nexus, and registry/prompt/lease/injection records at SEMA. The
+`terminal-supervisor` process shell now rides the generated actor-native
+daemon emitter: the generated listener runtime binds the ordinary working
+socket and terminal meta socket, while the component hook preserves the
+external `signal-terminal` plus `meta-signal-terminal` frame contracts and
+routes them into the existing supervisor actor. The remaining work is
+supervisor-to-`terminal-daemon` consolidation and full meta session lifecycle
+behavior, not socket-tier substrate. The transitional supervisor daemon
+starts from exactly one signal-encoded/rkyv
 `TerminalDaemonConfiguration` file and rejects inline NOTA and `.nota`
 startup files.
 

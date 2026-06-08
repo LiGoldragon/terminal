@@ -66,7 +66,7 @@ signal-persona-origin = { git = "https://github.com/LiGoldragon/signal-persona-o
 signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"
-tokio        = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio        = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 triad-runtime = { git = "https://github.com/LiGoldragon/triad-runtime.git", branch = "main" }
 vt100        = "0.16"
 

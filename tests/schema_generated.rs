@@ -1,4 +1,5 @@
 use terminal::schema::{nexus, sema, signal};
+use terminal::{ComponentDaemon, TerminalProcessDaemon};
 
 #[test]
 fn generated_terminal_planes_expose_control_lifecycle_and_registry_nouns() {
@@ -33,4 +34,17 @@ fn generated_terminal_planes_expose_control_lifecycle_and_registry_nouns() {
     let effect = nexus::NexusEffectCommand::run_terminal_cell(cell_command);
     let nexus_effect = nexus::NexusAction::command_effect(effect);
     assert!(matches!(nexus_effect, nexus::NexusAction::CommandEffect(_)));
+}
+
+#[test]
+fn generated_terminal_daemon_exposes_working_and_meta_listener_surface() {
+    fn accepts_component_daemon<Daemon: ComponentDaemon>() {}
+
+    accepts_component_daemon::<TerminalProcessDaemon>();
+    assert_eq!(terminal::ListenerTier::Working.to_string(), "working");
+    assert_eq!(terminal::ListenerTier::Meta.to_string(), "meta");
+    assert_eq!(
+        <TerminalProcessDaemon as ComponentDaemon>::PROCESS_NAME,
+        "terminal-supervisor"
+    );
 }

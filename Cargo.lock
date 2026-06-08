@@ -138,7 +138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -682,7 +682,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -703,7 +703,7 @@ dependencies = [
 [[package]]
 name = "schema-rust-next"
 version = "0.5.1"
-source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#83f1ee1f91a67e8728ad0fdc657b4cbd7d3d48dc"
+source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#117bda3c249e4d669d42418ad5172b1986873b0f"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -832,18 +832,15 @@ checksum = "dc6fe69c597f9c37bfeeeeeb33da3530379845f10be461a66d16d03eca2ded77"
 [[package]]
 name = "signal-engine-management"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-engine-management.git?branch=main#305b7031668fed76c43af0d28cf70b94c933089d"
+source = "git+https://github.com/LiGoldragon/signal-engine-management.git?branch=main#75e7ff7eaad7e2e7b87d38fd116456372a059dc3"
 dependencies = [
- "nota-next",
- "rkyv",
- "signal-frame",
- "signal-persona-origin",
+ "signal-persona",
 ]
 
 [[package]]
 name = "signal-frame"
 version = "0.2.1"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#8b128d3648935d9d322d5c4985d5b347aaeecddd"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#166bda84dc63bf8461fff11a41c43d6a1c92a941"
 dependencies = [
  "nota-next",
  "paste",
@@ -855,7 +852,7 @@ dependencies = [
 [[package]]
 name = "signal-frame-macros"
 version = "0.1.1"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#8b128d3648935d9d322d5c4985d5b347aaeecddd"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#166bda84dc63bf8461fff11a41c43d6a1c92a941"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -894,6 +891,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-persona"
+version = "0.1.0"
+source = "git+https://github.com/LiGoldragon/signal-persona.git?branch=main#c8e07396e37afd051d6485b86e9820b2031d37b4"
+dependencies = [
+ "nota-next",
+ "rkyv",
+ "signal-frame",
+ "signal-persona-origin",
+]
+
+[[package]]
 name = "signal-persona-origin"
 version = "0.1.0"
 source = "git+https://github.com/LiGoldragon/signal-persona-origin.git?branch=main#da2bee2e1a178f24a62d1eb5d3985e3937a79b5b"
@@ -914,7 +922,7 @@ dependencies = [
 [[package]]
 name = "signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#9ed60fbe17ee58a30d94146ecda11ae0ef85fd09"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#46c92b589adcf076428fd2b38b908f905c8e46e6"
 dependencies = [
  "nota-next",
  "rkyv",
@@ -1129,7 +1137,7 @@ dependencies = [
 [[package]]
 name = "triad-runtime"
 version = "0.6.0"
-source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#1210391f3f99914ca79abbc50b9eba4df9946a83"
+source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#a3c92b68b645a3b53093ec3124e64bf202bbbc33"
 dependencies = [
  "kameo",
  "rustix 1.1.4",

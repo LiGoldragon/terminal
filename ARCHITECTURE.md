@@ -168,9 +168,10 @@ is being folded into that daemon:
 
 - `terminal-daemon` currently owns one PTY and writes a
   `SessionRegistration` into component SEMA for tests.
-- `terminal-supervisor` currently binds the engine-facing Signal
-  socket, answers supervision traffic, resolves sessions from component SEMA,
-  and forwards requests to registered cells.
+- `terminal-supervisor` now uses the generated actor-native daemon
+  process shell for its working and meta Signal listeners, answers
+  supervision traffic, resolves sessions from component SEMA, and forwards
+  requests to registered cells through the component hook.
 
 Those transitional binaries are implementation stepping stones. The durable
 architecture is one component daemon with internal session actors.
@@ -263,8 +264,9 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
   communication socket and a supervision socket, owns component SEMA, and
   owns all terminal session actors.
 - `terminal-supervisor` is transitional code being folded into the
-  component daemon. Its tests remain useful because they prove registry
-  resolution, Signal frame handling, and supervision replies.
+  component daemon. Its tests remain useful because they prove generated
+  working/meta listener binding, registry resolution, Signal frame handling,
+  supervision replies, and subscription forwarding.
 - Standalone `terminal-daemon` one-PTY behavior is transitional code
   used by stateful witnesses while the consolidated daemon lands.
 - Every bound socket applies `PERSONA_SOCKET_MODE` (mode 0600 by default) in
