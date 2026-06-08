@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 
 use signal_terminal::TerminalDaemonConfiguration;
 use thiserror::Error;
-use triad_runtime::{DaemonConfiguration, SocketMode as RuntimeSocketMode};
+use triad_runtime::{
+    DaemonConfiguration, RequestConcurrencyLimit, SocketMode as RuntimeSocketMode,
+};
 
 use crate::{
     SupervisionListener, SupervisionProfile, SupervisionSocketMode, tables::StoreLocation,
@@ -79,6 +81,10 @@ impl DaemonConfiguration for Configuration {
         Some(RuntimeSocketMode::new(
             self.raw.terminal_socket_mode.into_u32(),
         ))
+    }
+
+    fn request_concurrency_limit(&self) -> RequestConcurrencyLimit {
+        RequestConcurrencyLimit::new(64)
     }
 
     fn meta_socket_path(&self) -> Option<&Path> {

@@ -37,9 +37,10 @@ use terminal::supervisor::{
 };
 use terminal::tables::{StoreLocation, TerminalTables};
 use terminal::{
-    SocketMode, SupervisionFrameCodec, TerminalDaemonConfigurationFile,
+    Configuration, SocketMode, SupervisionFrameCodec, TerminalDaemonConfigurationFile,
     TerminalSupervisorDaemonCommand,
 };
+use triad_runtime::DaemonConfiguration;
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -462,6 +463,30 @@ fn terminal_supervisor_command_line_uses_spawn_envelope_environment() {
         .expect("supervisor daemon resolves from spawn envelope environment");
     assert_eq!(daemon.socket(), &socket);
     assert_eq!(daemon.store().as_path(), state.as_path());
+}
+
+#[test]
+fn terminal_daemon_configuration_raises_working_request_concurrency() {
+    use signal_engine_management::SocketMode as WireSocketMode;
+    use signal_persona_origin::{OwnerIdentity, UnixUserIdentifier};
+    use signal_terminal::TerminalDaemonConfiguration;
+
+    let fixture = SupervisorFixture::new("request-concurrency");
+    let raw = TerminalDaemonConfiguration {
+        terminal_socket_path: WirePath::new(fixture.supervisor_socket().display().to_string()),
+        terminal_socket_mode: WireSocketMode::new(0o600),
+        meta_terminal_socket_path: WirePath::new(
+            fixture.meta_supervisor_socket().display().to_string(),
+        ),
+        meta_terminal_socket_mode: WireSocketMode::new(0o600),
+        supervision_socket_path: WirePath::new(fixture.supervision_socket().display().to_string()),
+        supervision_socket_mode: WireSocketMode::new(0o600),
+        store_path: WirePath::new(fixture.store().as_path().display().to_string()),
+        owner_identity: OwnerIdentity::UnixUser(UnixUserIdentifier::new(1000)),
+    };
+    let configuration = Configuration::from_raw(raw);
+
+    assert_eq!(configuration.request_concurrency_limit().count(), 64);
 }
 
 #[test]

@@ -168,7 +168,7 @@ is being folded into that daemon:
 
 - `terminal-daemon` currently owns one PTY and writes a
   `SessionRegistration` into component SEMA for tests.
-- `terminal-supervisor` now uses the generated actor-native daemon
+- `terminal-supervisor` now uses the generated async task-backed daemon
   process shell for its working and meta Signal listeners, answers
   supervision traffic, resolves sessions from component SEMA, and forwards
   requests to registered cells through the component hook.

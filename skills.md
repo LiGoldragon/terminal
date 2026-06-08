@@ -35,7 +35,7 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - The terminal meta surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.
-- `terminal-supervisor` now uses the generated actor-native daemon process
+- `terminal-supervisor` now uses the generated async task-backed daemon process
   shell for ordinary and meta listeners while still routing to the existing
   supervisor actor. The old one-PTY `terminal-daemon` behavior remains a
   transitional implementation step. Keep their witnesses useful while folding

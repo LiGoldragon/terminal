@@ -18,7 +18,7 @@ generate checked-in modules under `src/schema/` through `schema-rust-next`.
 Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
 Nexus, and registry/prompt/lease/injection records at SEMA. The
-`terminal-supervisor` process shell now rides the generated actor-native
+`terminal-supervisor` process shell now rides the generated async task-backed
 daemon emitter: the generated listener runtime binds the ordinary working
 socket and terminal meta socket, while the component hook preserves the
 external `signal-terminal` plus `meta-signal-terminal` frame contracts and
