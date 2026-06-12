@@ -69,7 +69,9 @@ socket ↔ terminal cell) is raw bytes.
   `signal-terminal` and terminal meta signal contracts while routing into the
   local triad nouns;
 - internal terminal-cell session actors;
-- visible viewer client;
+- `terminal` ordinary Signal CLI;
+- `meta-terminal` meta Signal CLI;
+- visible viewer helper (`terminal-viewer`);
 - raw input sender client;
 - signal terminal request client;
 - output scrollback replay;
@@ -146,7 +148,15 @@ The current daemon writes a named session record into component SEMA through
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
 
-`terminal-signal` is the current contract witness client. It constructs
+`terminal` is the ordinary component CLI. It accepts one NOTA
+`signal-terminal::Input`, sends a length-prefixed Signal frame to the
+component communication socket, and renders the typed reply as NOTA.
+
+`meta-terminal` is the meta component CLI. It accepts one NOTA
+`meta-signal-terminal` request, sends it to the terminal meta socket, and
+renders the typed reply as NOTA.
+
+`terminal-signal` is the legacy contract witness client. It constructs
 `signal-terminal` requests, sends them as length-prefixed Signal frames
 to a terminal communication socket, and renders the resulting terminal event.
 

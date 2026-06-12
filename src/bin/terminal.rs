@@ -1,5 +1,5 @@
-use terminal::pty::ViewerRequest;
+use terminal::client::TerminalCommandLine;
 
 fn main() -> terminal::Result<()> {
-    ViewerRequest::from_environment().run()
+    TerminalCommandLine::from_env().run(std::io::stdout())
 }

@@ -36,7 +36,7 @@ fn unique_socket_path(name: &str) -> std::path::PathBuf {
 fn terminal_contract_connection_returns_ready_event() {
     let mut binding = binding();
     let event = binding
-        .handle_request(Input::TerminalConnection(TerminalConnection(
+        .handle_request(Input::TerminalConnection(TerminalConnection::new(
             terminal_name(),
         )))
         .expect("connection does not touch the socket");

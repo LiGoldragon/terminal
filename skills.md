@@ -35,6 +35,10 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - The terminal meta surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.
+- `terminal` and `meta-terminal` are the component CLIs. They each accept
+  exactly one NOTA argument or file and talk to the ordinary and meta Signal
+  sockets respectively. Keep local PTY helpers explicitly named
+  (`terminal-viewer`, `terminal-send`, `terminal-capture`, etc.).
 - `terminal-supervisor` now uses the generated async task-backed daemon process
   shell for ordinary and meta listeners while still routing to the existing
   supervisor actor. The old one-PTY `terminal-daemon` behavior remains a

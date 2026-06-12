@@ -26,7 +26,7 @@ pub use crate::schema::signal::ErrorReport as ErrorReport;
 
 #[rustfmt::skip]
 #[cfg(feature = "nota-text")]
-pub use nota_next::{NotaDecode, NotaDecodeError, NotaEncode, NotaSource};
+pub use nota_next::{NotaDecodeError, NotaEncode, NotaSource};
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
@@ -40,19 +40,29 @@ pub enum WriteInput {
 }
 
 #[rustfmt::skip]
-pub type RecordSession = SessionRecord;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecordSession(SessionRecord);
 
 #[rustfmt::skip]
-pub type RetireSession = SessionName;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RetireSession(SessionName);
 
 #[rustfmt::skip]
-pub type RecordPromptPattern = PromptPatternRegistration;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecordPromptPattern(PromptPatternRegistration);
 
 #[rustfmt::skip]
-pub type RecordInputGate = InputGateLease;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecordInputGate(InputGateLease);
 
 #[rustfmt::skip]
-pub type RecordInjection = InjectionReceipt;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RecordInjection(InjectionReceipt);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
@@ -64,13 +74,19 @@ pub enum ReadInput {
 }
 
 #[rustfmt::skip]
-pub type ListSessionRecords = ListSessionsMarker;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ListSessionRecords(ListSessionsMarker);
 
 #[rustfmt::skip]
-pub type ResolveSessionRecord = SessionName;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ResolveSessionRecord(SessionName);
 
 #[rustfmt::skip]
-pub type ReadTranscript = SessionName;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ReadTranscript(SessionName);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
@@ -96,23 +112,29 @@ pub enum ReadOutput {
 pub struct ListSessionsMarker {}
 
 #[rustfmt::skip]
-pub type CommitSequence = Integer;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CommitSequence(Integer);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct CommitReceipt(pub CommitSequence);
+pub struct CommitReceipt(CommitSequence);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct SessionRecordsRead(pub CommitSequence);
+pub struct SessionRecordsRead(CommitSequence);
 
 #[rustfmt::skip]
-pub type SessionRecordResolved = SessionRecord;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SessionRecordResolved(SessionRecord);
 
 #[rustfmt::skip]
-pub type TranscriptRead = TranscriptCapture;
+#[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TranscriptRead(TranscriptCapture);
 
 #[rustfmt::skip]
 #[cfg_attr(feature = "nota-text", derive(nota_next::NotaDecode, nota_next::NotaEncode))]
@@ -128,6 +150,177 @@ pub enum Input {
 pub enum Output {
     WriteOutput(WriteOutput),
     ReadOutput(ReadOutput),
+}
+
+#[rustfmt::skip]
+impl RecordSession {
+    pub fn new(payload: SessionRecord) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &SessionRecord {
+        &self.0
+    }
+    pub fn into_payload(self) -> SessionRecord {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<SessionRecord> for RecordSession {
+    fn from(payload: SessionRecord) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl RetireSession {
+    pub fn new(payload: SessionName) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &SessionName {
+        &self.0
+    }
+    pub fn into_payload(self) -> SessionName {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<SessionName> for RetireSession {
+    fn from(payload: SessionName) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl RecordPromptPattern {
+    pub fn new(payload: PromptPatternRegistration) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &PromptPatternRegistration {
+        &self.0
+    }
+    pub fn into_payload(self) -> PromptPatternRegistration {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<PromptPatternRegistration> for RecordPromptPattern {
+    fn from(payload: PromptPatternRegistration) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl RecordInputGate {
+    pub fn new(payload: InputGateLease) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &InputGateLease {
+        &self.0
+    }
+    pub fn into_payload(self) -> InputGateLease {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<InputGateLease> for RecordInputGate {
+    fn from(payload: InputGateLease) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl RecordInjection {
+    pub fn new(payload: InjectionReceipt) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &InjectionReceipt {
+        &self.0
+    }
+    pub fn into_payload(self) -> InjectionReceipt {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<InjectionReceipt> for RecordInjection {
+    fn from(payload: InjectionReceipt) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl ListSessionRecords {
+    pub fn new(payload: ListSessionsMarker) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &ListSessionsMarker {
+        &self.0
+    }
+    pub fn into_payload(self) -> ListSessionsMarker {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<ListSessionsMarker> for ListSessionRecords {
+    fn from(payload: ListSessionsMarker) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl ResolveSessionRecord {
+    pub fn new(payload: SessionName) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &SessionName {
+        &self.0
+    }
+    pub fn into_payload(self) -> SessionName {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<SessionName> for ResolveSessionRecord {
+    fn from(payload: SessionName) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl ReadTranscript {
+    pub fn new(payload: SessionName) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &SessionName {
+        &self.0
+    }
+    pub fn into_payload(self) -> SessionName {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<SessionName> for ReadTranscript {
+    fn from(payload: SessionName) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl CommitSequence {
+    pub fn new(payload: Integer) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &Integer {
+        &self.0
+    }
+    pub fn into_payload(self) -> Integer {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<Integer> for CommitSequence {
+    fn from(payload: Integer) -> Self {
+        Self::new(payload)
+    }
 }
 
 #[rustfmt::skip]
@@ -169,34 +362,72 @@ impl From<CommitSequence> for SessionRecordsRead {
 }
 
 #[rustfmt::skip]
+impl SessionRecordResolved {
+    pub fn new(payload: SessionRecord) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &SessionRecord {
+        &self.0
+    }
+    pub fn into_payload(self) -> SessionRecord {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<SessionRecord> for SessionRecordResolved {
+    fn from(payload: SessionRecord) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl TranscriptRead {
+    pub fn new(payload: TranscriptCapture) -> Self {
+        Self(payload)
+    }
+    pub fn payload(&self) -> &TranscriptCapture {
+        &self.0
+    }
+    pub fn into_payload(self) -> TranscriptCapture {
+        self.0
+    }
+}
+#[rustfmt::skip]
+impl From<TranscriptCapture> for TranscriptRead {
+    fn from(payload: TranscriptCapture) -> Self {
+        Self::new(payload)
+    }
+}
+
+#[rustfmt::skip]
 impl WriteInput {
-    pub fn record_session(payload: RecordSession) -> Self {
-        Self::RecordSession(payload)
+    pub fn record_session(payload: SessionRecord) -> Self {
+        Self::RecordSession(RecordSession::new(payload))
     }
-    pub fn retire_session(payload: RetireSession) -> Self {
-        Self::RetireSession(payload)
+    pub fn retire_session(payload: SessionName) -> Self {
+        Self::RetireSession(RetireSession::new(payload))
     }
-    pub fn record_prompt_pattern(payload: RecordPromptPattern) -> Self {
-        Self::RecordPromptPattern(payload)
+    pub fn record_prompt_pattern(payload: PromptPatternRegistration) -> Self {
+        Self::RecordPromptPattern(RecordPromptPattern::new(payload))
     }
-    pub fn record_input_gate(payload: RecordInputGate) -> Self {
-        Self::RecordInputGate(payload)
+    pub fn record_input_gate(payload: InputGateLease) -> Self {
+        Self::RecordInputGate(RecordInputGate::new(payload))
     }
-    pub fn record_injection(payload: RecordInjection) -> Self {
-        Self::RecordInjection(payload)
+    pub fn record_injection(payload: InjectionReceipt) -> Self {
+        Self::RecordInjection(RecordInjection::new(payload))
     }
 }
 
 #[rustfmt::skip]
 impl ReadInput {
-    pub fn list_session_records(payload: ListSessionRecords) -> Self {
-        Self::ListSessionRecords(payload)
+    pub fn list_session_records(payload: ListSessionsMarker) -> Self {
+        Self::ListSessionRecords(ListSessionRecords::new(payload))
     }
-    pub fn resolve_session_record(payload: ResolveSessionRecord) -> Self {
-        Self::ResolveSessionRecord(payload)
+    pub fn resolve_session_record(payload: SessionName) -> Self {
+        Self::ResolveSessionRecord(ResolveSessionRecord::new(payload))
     }
-    pub fn read_transcript(payload: ReadTranscript) -> Self {
-        Self::ReadTranscript(payload)
+    pub fn read_transcript(payload: SessionName) -> Self {
+        Self::ReadTranscript(ReadTranscript::new(payload))
     }
 }
 
@@ -215,11 +446,11 @@ impl ReadOutput {
     pub fn session_records_read(payload: CommitSequence) -> Self {
         Self::SessionRecordsRead(SessionRecordsRead::new(payload))
     }
-    pub fn session_record_resolved(payload: SessionRecordResolved) -> Self {
-        Self::SessionRecordResolved(payload)
+    pub fn session_record_resolved(payload: SessionRecord) -> Self {
+        Self::SessionRecordResolved(SessionRecordResolved::new(payload))
     }
-    pub fn transcript_read(payload: TranscriptRead) -> Self {
-        Self::TranscriptRead(payload)
+    pub fn transcript_read(payload: TranscriptCapture) -> Self {
+        Self::TranscriptRead(TranscriptRead::new(payload))
     }
     pub fn read_rejected(payload: ErrorReport) -> Self {
         Self::ReadRejected(payload)
@@ -247,6 +478,62 @@ impl Output {
 }
 
 #[rustfmt::skip]
+impl From<RecordSession> for WriteInput {
+    fn from(payload: RecordSession) -> Self {
+        Self::RecordSession(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<RetireSession> for WriteInput {
+    fn from(payload: RetireSession) -> Self {
+        Self::RetireSession(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<RecordPromptPattern> for WriteInput {
+    fn from(payload: RecordPromptPattern) -> Self {
+        Self::RecordPromptPattern(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<RecordInputGate> for WriteInput {
+    fn from(payload: RecordInputGate) -> Self {
+        Self::RecordInputGate(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<RecordInjection> for WriteInput {
+    fn from(payload: RecordInjection) -> Self {
+        Self::RecordInjection(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<ListSessionRecords> for ReadInput {
+    fn from(payload: ListSessionRecords) -> Self {
+        Self::ListSessionRecords(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<ResolveSessionRecord> for ReadInput {
+    fn from(payload: ResolveSessionRecord) -> Self {
+        Self::ResolveSessionRecord(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<ReadTranscript> for ReadInput {
+    fn from(payload: ReadTranscript) -> Self {
+        Self::ReadTranscript(payload)
+    }
+}
+
+#[rustfmt::skip]
 impl From<CommitReceipt> for WriteOutput {
     fn from(payload: CommitReceipt) -> Self {
         Self::Committed(payload)
@@ -264,6 +551,20 @@ impl From<ErrorReport> for WriteOutput {
 impl From<SessionRecordsRead> for ReadOutput {
     fn from(payload: SessionRecordsRead) -> Self {
         Self::SessionRecordsRead(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<SessionRecordResolved> for ReadOutput {
+    fn from(payload: SessionRecordResolved) -> Self {
+        Self::SessionRecordResolved(payload)
+    }
+}
+
+#[rustfmt::skip]
+impl From<TranscriptRead> for ReadOutput {
+    fn from(payload: TranscriptRead) -> Self {
+        Self::TranscriptRead(payload)
     }
 }
 
@@ -304,94 +605,6 @@ impl From<ReadOutput> for Output {
 
 #[rustfmt::skip]
 #[cfg(feature = "nota-text")]
-impl WriteInput {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl ReadInput {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl WriteOutput {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl ReadOutput {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl ListSessionsMarker {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl CommitReceipt {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl SessionRecordsRead {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl Input {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
 impl std::str::FromStr for Input {
     type Err = NotaDecodeError;
     fn from_str(source: &str) -> Result<Self, Self::Err> {
@@ -403,17 +616,6 @@ impl std::str::FromStr for Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(&<Self as NotaEncode>::to_nota(self))
-    }
-}
-
-#[rustfmt::skip]
-#[cfg(feature = "nota-text")]
-impl Output {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
-    }
-    pub fn to_nota(&self) -> String {
-        <Self as NotaEncode>::to_nota(self)
     }
 }
 
@@ -688,15 +890,14 @@ impl TraceEvent {
     PartialEq,
     Eq,
 )]
-pub struct OriginRoute(pub Integer);
+pub struct OriginRoute(Integer);
 #[rustfmt::skip]
-#[cfg(feature = "nota-text")]
 impl OriginRoute {
-    pub fn from_nota_block(block: &nota_next::Block) -> Result<Self, NotaDecodeError> {
-        <Self as NotaDecode>::from_nota_block(block)
+    pub fn new(payload: Integer) -> Self {
+        Self(payload)
     }
-    pub fn to_nota(self) -> String {
-        <Self as NotaEncode>::to_nota(&self)
+    pub fn payload(&self) -> Integer {
+        self.0
     }
 }
 

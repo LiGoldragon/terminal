@@ -25,10 +25,10 @@ use signal_persona::{
 use signal_terminal::{
     Frame, FrameBody, ListSessions, Output, PromptPattern, PromptPatternBytes,
     PromptPatternIdentifier, PromptPatternRegistered, RegisterPromptPattern, ResolveSession,
-    SessionEntry, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
-    TerminalDeliveryAttemptState, TerminalEvent, TerminalName, TerminalWorkerKind,
-    TerminalWorkerLifecycle, TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot,
-    TerminalWorkerStop, TerminalWorkerStopReason, WirePath,
+    SessionEntry, SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalDeliveryAttemptState,
+    TerminalEvent, TerminalName, TerminalWorkerKind, TerminalWorkerLifecycle,
+    TerminalWorkerLifecycleEvent, TerminalWorkerLifecycleSnapshot, TerminalWorkerStop,
+    TerminalWorkerStopReason, WirePath,
 };
 use terminal::registry::SessionRegistration;
 use terminal::supervisor::{
@@ -40,7 +40,7 @@ use terminal::{
     Configuration, SocketMode, SupervisionFrameCodec, TerminalDaemonConfigurationFile,
     TerminalSupervisorDaemonCommand,
 };
-use triad_runtime::DaemonConfiguration;
+use triad_runtime::BindingSurface;
 
 static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
 
@@ -340,7 +340,7 @@ fn terminal_supervisor_resolves_session_without_contacting_cell() {
         UnixStream::connect(supervisor_socket).expect("client connects to supervisor socket");
     let codec = TerminalSupervisorFrameCodec::default();
     codec
-        .write_request(&mut stream, ResolveSession(terminal.clone()).into())
+        .write_request(&mut stream, ResolveSession::new(terminal.clone()).into())
         .expect("client writes supervisor request");
     let event = codec
         .read_event(&mut stream)
@@ -398,9 +398,10 @@ fn terminal_supervisor_lists_sessions_without_contacting_cells() {
     let event = codec
         .read_event(&mut stream)
         .expect("client reads supervisor event");
-    let Output::SessionList(SessionList(mut entries)) = event.clone() else {
+    let Output::SessionList(list) = event.clone() else {
         panic!("expected session list reply, got {event:?}");
     };
+    let mut entries = list.payload().clone();
     entries.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
     let expected_entries = vec![
         SessionEntry {
@@ -671,7 +672,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
                 .expect("supervisor writes subscription request");
             assert_eq!(
                 request,
-                SubscribeTerminalWorkerLifecycle(terminal.clone()).into()
+                SubscribeTerminalWorkerLifecycle::new(terminal.clone()).into()
             );
             let stream: &mut UnixStream = stream.get_mut();
             codec
@@ -717,7 +718,7 @@ fn terminal_supervisor_subscription_streams_initial_state_then_delta() {
     codec
         .write_request(
             &mut stream,
-            SubscribeTerminalWorkerLifecycle(terminal.clone()).into(),
+            SubscribeTerminalWorkerLifecycle::new(terminal.clone()).into(),
         )
         .expect("client writes subscription request");
     let snapshot = codec

@@ -12,7 +12,7 @@ use meta_signal_terminal::{
 };
 use signal_frame::{
     ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
-    StreamEventIdentifier, SubReply, SubscriptionTokenInner,
+    SubReply, SubscriptionTokenInner,
 };
 use signal_terminal::{
     Frame, FrameBody, Input, Output, ResolveSession, SessionEntry, SessionList, SessionResolved,
@@ -26,22 +26,6 @@ use crate::error::{Error, Result};
 use crate::socket::SocketMode;
 use crate::supervision::{SupervisionListener, SupervisionProfile, SupervisionSocketMode};
 use crate::tables::{StoreLocation, TerminalTables};
-
-fn synthetic_exchange() -> ExchangeIdentifier {
-    ExchangeIdentifier::new(
-        SessionEpoch::new(0),
-        ExchangeLane::Connector,
-        LaneSequence::first(),
-    )
-}
-
-fn synthetic_stream_event() -> StreamEventIdentifier {
-    StreamEventIdentifier::new(
-        SessionEpoch::new(0),
-        ExchangeLane::Acceptor,
-        LaneSequence::first(),
-    )
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorDaemon {
@@ -337,7 +321,7 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn write_request(&self, writer: &mut impl Write, request: Input) -> Result<()> {
         let frame = Frame::new(FrameBody::Request {
-            exchange: synthetic_exchange(),
+            exchange: self.synthetic_exchange(),
             request: Request::from_payload(request),
         });
         let bytes = frame.encode_length_prefixed()?;
@@ -352,7 +336,7 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn write_reply(&self, writer: &mut impl Write, event: Output) -> Result<()> {
         let frame = Frame::new(FrameBody::Reply {
-            exchange: synthetic_exchange(),
+            exchange: self.synthetic_exchange(),
             reply: Reply::committed(NonEmpty::single(SubReply::Ok(event))),
         });
         let bytes = frame.encode_length_prefixed()?;
@@ -363,7 +347,7 @@ impl TerminalSupervisorFrameCodec {
 
     pub fn write_stream_event(&self, writer: &mut impl Write, event: TerminalEvent) -> Result<()> {
         let frame = Frame::new(FrameBody::SubscriptionEvent {
-            event_identifier: synthetic_stream_event(),
+            event_identifier: self.synthetic_stream_event(),
             token: SubscriptionTokenInner::new(1),
             event,
         });
@@ -425,6 +409,24 @@ impl TerminalSupervisorFrameCodec {
                 got: format!("{other:?}"),
             }),
         }
+    }
+
+    fn synthetic_exchange(&self) -> ExchangeIdentifier {
+        let _maximum_frame_bytes = self.maximum_frame_bytes;
+        ExchangeIdentifier::new(
+            SessionEpoch::new(0),
+            ExchangeLane::Connector,
+            LaneSequence::first(),
+        )
+    }
+
+    fn synthetic_stream_event(&self) -> signal_frame::StreamEventIdentifier {
+        let _maximum_frame_bytes = self.maximum_frame_bytes;
+        signal_frame::StreamEventIdentifier::new(
+            SessionEpoch::new(0),
+            ExchangeLane::Acceptor,
+            LaneSequence::first(),
+        )
     }
 }
 
@@ -544,14 +546,15 @@ impl TerminalSupervisor {
                 ),
             })
             .collect();
-        Ok(SessionList(entries).into())
+        Ok(SessionList::new(entries).into())
     }
 
     fn resolve_session(&self, resolve: ResolveSession) -> Result<Output> {
         let tables = TerminalTables::open(&self.store)?;
-        let Some(session) = tables.session(&resolve.0)? else {
+        let terminal = resolve.into_payload();
+        let Some(session) = tables.session(&terminal)? else {
             return Ok(TerminalRejected {
-                terminal: resolve.0,
+                terminal,
                 reason: TerminalRejectionReason::NotConnected,
             }
             .into());
@@ -570,7 +573,7 @@ impl TerminalSupervisor {
         sequence: u64,
         subscription: SubscribeTerminalWorkerLifecycle,
     ) -> Result<TerminalSupervisorSubscriptionStart> {
-        let terminal = subscription.0.clone();
+        let terminal = subscription.payload().clone();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
             TerminalObservationSequence::new(sequence),
@@ -815,20 +818,20 @@ struct TerminalRequestTerminal {
 impl TerminalRequestTerminal {
     fn from_request(request: &Input) -> Result<Self> {
         let terminal = match request {
-            Input::TerminalConnection(payload) => payload.0.clone(),
+            Input::TerminalConnection(payload) => payload.payload().clone(),
             Input::TerminalInput(payload) => payload.terminal.clone(),
             Input::TerminalResize(payload) => payload.terminal.clone(),
             Input::TerminalDetachment(payload) => payload.terminal.clone(),
-            Input::TerminalCapture(payload) => payload.0.clone(),
+            Input::TerminalCapture(payload) => payload.payload().clone(),
             Input::RegisterPromptPattern(payload) => payload.terminal.clone(),
             Input::UnregisterPromptPattern(payload) => payload.terminal.clone(),
-            Input::ListPromptPatterns(payload) => payload.0.clone(),
+            Input::ListPromptPatterns(payload) => payload.payload().clone(),
             Input::AcquireInputGate(payload) => payload.terminal.clone(),
             Input::ReleaseInputGate(payload) => payload.terminal.clone(),
             Input::WriteInjection(payload) => payload.terminal.clone(),
-            Input::SubscribeTerminalWorkerLifecycle(payload) => payload.0.clone(),
-            Input::TerminalWorkerLifecycleRetraction(payload) => payload.0.clone(),
-            Input::ResolveSession(payload) => payload.0.clone(),
+            Input::SubscribeTerminalWorkerLifecycle(payload) => payload.payload().clone(),
+            Input::TerminalWorkerLifecycleRetraction(payload) => payload.payload().clone(),
+            Input::ResolveSession(payload) => payload.payload().clone(),
             Input::ListSessions(_) => {
                 return Err(Error::InvalidArgument {
                     detail: "ListSessions is a registry query and has no terminal identity"
@@ -858,7 +861,7 @@ impl TerminalRequestTerminal {
             Output::InjectionAck(payload) => payload.terminal.clone(),
             Output::InjectionRejected(payload) => payload.terminal.clone(),
             Output::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
-            Output::SubscriptionRetracted(payload) => payload.0.0.clone(),
+            Output::SubscriptionRetracted(payload) => payload.payload().payload().clone(),
             Output::SessionResolved(payload) => payload.name.clone(),
             Output::SessionList(_) => return None,
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent

@@ -186,8 +186,10 @@ impl DaemonArguments {
         }
 
         Self {
-            control_socket: control_socket.unwrap_or_else(default_control_socket),
-            data_socket: data_socket.unwrap_or_else(default_data_socket),
+            control_socket: control_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().control_socket()),
+            data_socket: data_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().data_socket()),
             command: Self::command_from(command),
             store,
             terminal,
@@ -216,7 +218,7 @@ impl DaemonArguments {
         let mut command = command.into_iter();
         match command.next() {
             Some(program) => TerminalCommand::new(program, command.collect::<Vec<_>>()),
-            None => default_command(),
+            None => TerminalSocketDefaults::current().command(),
         }
     }
 }
@@ -541,6 +543,7 @@ impl TerminalControlConnection {
         &mut self,
         subscription: terminal_signal::SubscribeTerminalWorkerLifecycle,
     ) -> io::Result<()> {
+        let terminal_name = subscription.into_payload();
         let mut lifecycle = self
             .runtime
             .block_on(async {
@@ -551,7 +554,7 @@ impl TerminalControlConnection {
             .map_err(Self::actor_error)?;
         SocketReplyWriter::new(&mut self.stream).write_signal_event(
             terminal_signal::TerminalWorkerLifecycleSnapshot {
-                terminal: subscription.0.clone(),
+                terminal: terminal_name.clone(),
                 observations: lifecycle
                     .replay()
                     .iter()
@@ -571,7 +574,7 @@ impl TerminalControlConnection {
             // wraps the same way.
             SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
                 terminal_signal::TerminalWorkerLifecycleEvent {
-                    terminal: subscription.0.clone(),
+                    terminal: terminal_name.clone(),
                     observation: TerminalSignalControl::worker_lifecycle(event),
                 }
                 .into(),
@@ -761,8 +764,10 @@ impl ViewerRequest {
         }
 
         Self {
-            control_socket: control_socket.unwrap_or_else(default_control_socket),
-            data_socket: data_socket.unwrap_or_else(default_data_socket),
+            control_socket: control_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().control_socket()),
+            data_socket: data_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().data_socket()),
             mode,
             ready_file,
         }
@@ -1011,7 +1016,8 @@ impl TerminalSocket {
 
 impl SendRequest {
     pub fn from_environment() -> Self {
-        let (control_socket, text) = control_socket_and_text_from_environment();
+        let (control_socket, text) =
+            TerminalSocketDefaults::current().control_socket_and_text_from_environment();
         Self {
             control_socket,
             text,
@@ -1026,7 +1032,8 @@ impl SendRequest {
 
 impl TypeRequest {
     pub fn from_environment() -> Self {
-        let (control_socket, text) = control_socket_and_text_from_environment();
+        let (control_socket, text) =
+            TerminalSocketDefaults::current().control_socket_and_text_from_environment();
         Self {
             control_socket,
             text,
@@ -1043,7 +1050,7 @@ impl CaptureRequest {
         let control_socket = env::args_os()
             .nth(1)
             .map(PathBuf::from)
-            .unwrap_or_else(default_control_socket);
+            .unwrap_or_else(|| TerminalSocketDefaults::current().control_socket());
         Self { control_socket }
     }
 
@@ -1147,27 +1154,43 @@ impl TerminalScreenSnapshot {
     }
 }
 
-fn default_control_socket() -> PathBuf {
-    PathBuf::from(DEFAULT_CONTROL_SOCKET)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalSocketDefaults {
+    control_socket: &'static str,
+    data_socket: &'static str,
 }
 
-fn default_data_socket() -> PathBuf {
-    PathBuf::from(DEFAULT_DATA_SOCKET)
-}
+impl TerminalSocketDefaults {
+    fn current() -> Self {
+        Self {
+            control_socket: DEFAULT_CONTROL_SOCKET,
+            data_socket: DEFAULT_DATA_SOCKET,
+        }
+    }
 
-fn default_command() -> TerminalCommand {
-    TerminalCommand::new(env::var("SHELL").unwrap_or_else(|_| "bash".to_string()), [])
-}
+    fn control_socket(self) -> PathBuf {
+        PathBuf::from(self.control_socket)
+    }
 
-fn control_socket_and_text_from_environment() -> (PathBuf, Vec<u8>) {
-    let mut arguments = env::args_os().skip(1);
-    let control_socket = arguments
-        .next()
-        .map(PathBuf::from)
-        .unwrap_or_else(default_control_socket);
-    let text = arguments
-        .next()
-        .map(|value| value.to_string_lossy().into_owned().into_bytes())
-        .unwrap_or_default();
-    (control_socket, text)
+    fn data_socket(self) -> PathBuf {
+        PathBuf::from(self.data_socket)
+    }
+
+    fn command(self) -> TerminalCommand {
+        let _data_socket = self.data_socket;
+        TerminalCommand::new(env::var("SHELL").unwrap_or_else(|_| "bash".to_string()), [])
+    }
+
+    fn control_socket_and_text_from_environment(self) -> (PathBuf, Vec<u8>) {
+        let mut arguments = env::args_os().skip(1);
+        let control_socket = arguments
+            .next()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.control_socket());
+        let text = arguments
+            .next()
+            .map(|value| value.to_string_lossy().into_owned().into_bytes())
+            .unwrap_or_default();
+        (control_socket, text)
+    }
 }

@@ -18,6 +18,16 @@ path = "src/bin/terminal-daemon.rs"
 [[bin]]
 name = "terminal"
 path = "src/bin/terminal.rs"
+required-features = ["nota-text"]
+
+[[bin]]
+name = "meta-terminal"
+path = "src/bin/meta_terminal.rs"
+required-features = ["nota-text"]
+
+[[bin]]
+name = "terminal-viewer"
+path = "src/bin/terminal_viewer.rs"
 
 [[bin]]
 name = "terminal-send"

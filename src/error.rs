@@ -13,8 +13,15 @@ pub enum Error {
     #[error("signal frame: {0}")]
     SignalFrame(#[from] signal_frame::FrameError),
 
+    #[error("triad runtime frame: {0}")]
+    TriadRuntimeFrame(#[from] triad_runtime::FrameError),
+
     #[error("daemon argument: {0}")]
     Argument(#[from] triad_runtime::ArgumentError),
+
+    #[cfg(feature = "nota-text")]
+    #[error("nota decode: {0}")]
+    Nota(#[from] nota_next::NotaDecodeError),
 
     #[error("actor call: {detail}")]
     ActorCall { detail: String },
@@ -50,6 +57,13 @@ pub enum Error {
 
     #[error("failed to read terminal daemon configuration {path:?}: {source}")]
     ConfigurationRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
+    #[cfg(feature = "nota-text")]
+    #[error("failed to read terminal NOTA input {path:?}: {source}")]
+    NotaFileRead {
         path: PathBuf,
         source: std::io::Error,
     },

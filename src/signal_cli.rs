@@ -11,11 +11,11 @@ use signal_terminal::{
     InjectionRejected, Input, InputGateLease, InputGateLeaseIdentifier, InputGateReason,
     ListPromptPatterns, Output, PromptPattern, PromptPatternBytes, PromptPatternList,
     PromptPatternRegistered, PromptPatternUnregistered, PromptState, RegisterPromptPattern,
-    ReleaseInputGate, SessionList, SessionResolved, SubscribeTerminalWorkerLifecycle,
-    SubscriptionRetracted, TerminalCapture, TerminalCaptured, TerminalColumns, TerminalConnection,
-    TerminalDetached, TerminalInput, TerminalInputAccepted, TerminalInputBytes, TerminalName,
-    TerminalReady, TerminalRejected, TerminalResize, TerminalResized, TerminalRows,
-    TerminalWorkerLifecycleSnapshot, TranscriptDelta, UnregisterPromptPattern, WriteInjection,
+    ReleaseInputGate, SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalCapture,
+    TerminalCaptured, TerminalColumns, TerminalConnection, TerminalDetached, TerminalInput,
+    TerminalInputAccepted, TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected,
+    TerminalResize, TerminalResized, TerminalRows, TerminalWorkerLifecycleSnapshot,
+    TranscriptDelta, UnregisterPromptPattern, WriteInjection,
 };
 
 use crate::pty::TerminalSocket;
@@ -23,14 +23,6 @@ use crate::{Error, Result};
 
 const DEFAULT_CONTROL_SOCKET: &str = "/tmp/terminal.control.sock";
 const DEFAULT_TERMINAL: &str = "operator";
-
-fn synthetic_exchange() -> ExchangeIdentifier {
-    ExchangeIdentifier::new(
-        SessionEpoch::new(0),
-        ExchangeLane::Connector,
-        LaneSequence::first(),
-    )
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSignalRequest {
@@ -89,7 +81,7 @@ pub enum TerminalSignalOperation {
 impl TerminalSignalOperation {
     fn into_request(self, terminal: TerminalName) -> Input {
         match self {
-            Self::Connect => TerminalConnection(terminal).into(),
+            Self::Connect => TerminalConnection::new(terminal).into(),
             Self::Input { bytes } => TerminalInput {
                 terminal,
                 bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
@@ -104,7 +96,7 @@ impl TerminalSignalOperation {
                 }
                 .into()
             }
-            Self::Capture => TerminalCapture(terminal).into(),
+            Self::Capture => TerminalCapture::new(terminal).into(),
             Self::Resize { rows, columns } => TerminalResize {
                 terminal,
                 rows: TerminalRows::new(u64::from(rows)),
@@ -130,7 +122,7 @@ impl TerminalSignalOperation {
                 pattern_id: signal_terminal::PromptPatternIdentifier::new(pattern_id),
             }
             .into(),
-            Self::ListPrompts => ListPromptPatterns(terminal).into(),
+            Self::ListPrompts => ListPromptPatterns::new(terminal).into(),
             Self::AcquireGate { pattern_id } => AcquireInputGate {
                 terminal,
                 reason: InputGateReason::new("terminal signal cli".to_string()),
@@ -140,12 +132,12 @@ impl TerminalSignalOperation {
             .into(),
             Self::ReleaseGate { lease_id } => ReleaseInputGate {
                 terminal,
-                lease: InputGateLease(InputGateLeaseIdentifier::new(lease_id)),
+                lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
             }
             .into(),
             Self::Inject { lease_id, bytes } => WriteInjection {
                 terminal,
-                lease: InputGateLease(InputGateLeaseIdentifier::new(lease_id)),
+                lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
                 bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
             }
             .into(),
@@ -154,12 +146,12 @@ impl TerminalSignalOperation {
                 bytes.push(b'\r');
                 WriteInjection {
                     terminal,
-                    lease: InputGateLease(InputGateLeaseIdentifier::new(lease_id)),
+                    lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
                     bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
                 }
                 .into()
             }
-            Self::WorkerLifecycleSnapshot => SubscribeTerminalWorkerLifecycle(terminal).into(),
+            Self::WorkerLifecycleSnapshot => SubscribeTerminalWorkerLifecycle::new(terminal).into(),
         }
     }
 
@@ -318,7 +310,7 @@ impl TerminalSignalRequestFrame {
 
     fn into_request(self) -> Result<Input> {
         let frame = Frame::new(FrameBody::Request {
-            exchange: synthetic_exchange(),
+            exchange: TerminalSignalExchange::new().into_exchange(),
             request: Request::from_payload(self.request),
         });
         let bytes = frame.encode_length_prefixed()?;
@@ -355,7 +347,7 @@ impl TerminalSignalEventFrame {
 
     fn into_event(self) -> Result<Output> {
         let frame = Frame::new(FrameBody::Reply {
-            exchange: synthetic_exchange(),
+            exchange: TerminalSignalExchange::new().into_exchange(),
             reply: Reply::committed(NonEmpty::single(SubReply::Ok(self.event))),
         });
         let bytes = frame.encode_length_prefixed()?;
@@ -376,6 +368,27 @@ impl TerminalSignalEventFrame {
                 detail: format!("unexpected signal reply frame: {other:?}"),
             }),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalSignalExchange {
+    exchange: ExchangeIdentifier,
+}
+
+impl TerminalSignalExchange {
+    fn new() -> Self {
+        Self {
+            exchange: ExchangeIdentifier::new(
+                SessionEpoch::new(0),
+                ExchangeLane::Connector,
+                LaneSequence::first(),
+            ),
+        }
+    }
+
+    fn into_exchange(self) -> ExchangeIdentifier {
+        self.exchange
     }
 }
 
@@ -497,7 +510,7 @@ impl TerminalEventLine {
                 output,
                 "GateAcquired\t{}\t{}\t{}",
                 terminal.as_str(),
-                lease.0.clone().into_u64(),
+                lease.payload().clone().into_u64(),
                 PromptStateText::new(prompt_state)
             )?,
             Output::GateBusy(GateBusy {
@@ -517,7 +530,7 @@ impl TerminalEventLine {
                 output,
                 "GateReleased\t{}\t{}\t{}",
                 terminal.as_str(),
-                lease.0.clone().into_u64(),
+                lease.payload().clone().into_u64(),
                 cached_human_bytes.clone().into_u64()
             )?,
             Output::InjectionAck(InjectionAck {
@@ -545,16 +558,16 @@ impl TerminalEventLine {
                 terminal.as_str(),
                 observations.len()
             )?,
-            Output::SubscriptionRetracted(SubscriptionRetracted(token)) => {
-                writeln!(output, "SubscriptionRetracted\t{}", token.0.as_str())?
-            } // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
+            Output::SubscriptionRetracted(retracted) => writeln!(
+                output,
+                "SubscriptionRetracted\t{}",
+                retracted.payload().payload().as_str()
+            )?, // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
             // belongs to the streaming TerminalEvent enum — it arrives
             // via StreamingFrameBody::SubscriptionEvent, not as a
             // reply. The CLI's reply-reading path no longer receives
             // it; a separate subscription-event reader handles those.
-            Output::SessionList(SessionList(entries)) => {
-                writeln!(output, "SessionList\t{}", entries.len())?
-            }
+            Output::SessionList(list) => writeln!(output, "SessionList\t{}", list.payload().len())?,
             Output::SessionResolved(SessionResolved {
                 name,
                 data_socket_path,

@@ -213,7 +213,7 @@ impl SupervisionServer {
                         })
                         .send(),
                 )
-                .map_err(io_error)?;
+                .map_err(|error| self.codec.io_error(error))?;
             self.codec
                 .write_reply(stream, request.exchange, reply.reply)?;
         }
@@ -240,17 +240,17 @@ impl SupervisionFrameCodec {
                 Reply::Accepted { per_operation, .. } => {
                     let (sub_reply, tail) = per_operation.into_head_and_tail();
                     if !tail.is_empty() {
-                        return Err(io_error(format!(
+                        return Err(self.io_error(format!(
                             "expected one supervision reply operation, got {}",
                             tail.len() + 1
                         )));
                     }
                     match sub_reply {
                         SubReply::Ok(payload) => Ok(payload),
-                        other => Err(io_error(format!("{other:?}"))),
+                        other => Err(self.io_error(format!("{other:?}"))),
                     }
                 }
-                Reply::Rejected { reason } => Err(io_error(reason)),
+                Reply::Rejected { reason } => Err(self.io_error(reason)),
             },
             other => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -265,7 +265,7 @@ impl SupervisionFrameCodec {
             FrameBody::Request { exchange, request } => {
                 let mut operations = request.payloads.into_vec();
                 if operations.len() != 1 {
-                    return Err(io_error(format!(
+                    return Err(self.io_error(format!(
                         "expected one supervision operation, got {}",
                         operations.len()
                     )));
@@ -292,7 +292,9 @@ impl SupervisionFrameCodec {
             exchange,
             reply: Reply::committed(NonEmpty::single(SubReply::Ok(reply))),
         });
-        let bytes = frame.encode_length_prefixed().map_err(io_error)?;
+        let bytes = frame
+            .encode_length_prefixed()
+            .map_err(|error| self.io_error(error))?;
         writer.write_all(bytes.as_slice())?;
         writer.flush()
     }
@@ -311,7 +313,13 @@ impl SupervisionFrameCodec {
         bytes.extend_from_slice(&prefix);
         bytes.resize(4 + length, 0);
         reader.read_exact(&mut bytes[4..])?;
-        SupervisionFrame::decode_length_prefixed(bytes.as_slice()).map_err(io_error)
+        SupervisionFrame::decode_length_prefixed(bytes.as_slice())
+            .map_err(|error| self.io_error(error))
+    }
+
+    fn io_error(&self, error: impl std::fmt::Display) -> std::io::Error {
+        let _maximum_frame_bytes = self.maximum_frame_bytes;
+        std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())
     }
 }
 
@@ -319,8 +327,4 @@ impl SupervisionFrameCodec {
 struct ReceivedSupervisionRequest {
     exchange: ExchangeIdentifier,
     request: SupervisionRequest,
-}
-
-fn io_error(error: impl std::fmt::Display) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())
 }

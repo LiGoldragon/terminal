@@ -42,7 +42,7 @@ impl TerminalSignalControl {
         match request {
             terminal_signal::Input::TerminalConnection(connection) => {
                 Ok(terminal_signal::TerminalReady {
-                    terminal: connection.0,
+                    terminal: connection.into_payload(),
                     generation: terminal_signal::TerminalGeneration::new(1),
                 }
                 .into())
@@ -88,7 +88,7 @@ impl TerminalSignalControl {
             terminal_signal::Input::TerminalCapture(capture) => {
                 let snapshot = self.snapshot().await?;
                 Ok(terminal_signal::TerminalCaptured {
-                    terminal: capture.0,
+                    terminal: capture.into_payload(),
                     generation: terminal_signal::TerminalGeneration::new(1),
                     bytes: terminal_signal::TerminalTranscriptBytes::new(
                         Self::bytes_to_signal_bytes(snapshot.bytes()),
@@ -115,7 +115,7 @@ impl TerminalSignalControl {
             }
             terminal_signal::Input::ListPromptPatterns(list) => {
                 Ok(terminal_signal::PromptPatternList {
-                    terminal: list.0,
+                    terminal: list.into_payload(),
                     entries: self.prompt_pattern_entries(),
                 }
                 .into())
@@ -145,7 +145,8 @@ impl TerminalSignalControl {
         &mut self,
         subscription: terminal_signal::SubscribeTerminalWorkerLifecycle,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
-        let token = terminal_signal::TerminalWorkerLifecycleToken(subscription.0.clone());
+        let terminal = subscription.into_payload();
+        let token = terminal_signal::TerminalWorkerLifecycleToken::new(terminal.clone());
         if !self.lifecycle_subscriptions.contains(&token) {
             self.lifecycle_subscriptions.push(token);
         }
@@ -161,7 +162,7 @@ impl TerminalSignalControl {
             .map(Self::worker_lifecycle)
             .collect();
         Ok(terminal_signal::TerminalWorkerLifecycleSnapshot {
-            terminal: subscription.0,
+            terminal,
             observations,
         }
         .into())
@@ -178,10 +179,10 @@ impl TerminalSignalControl {
         match position {
             Some(index) => {
                 self.lifecycle_subscriptions.remove(index);
-                terminal_signal::SubscriptionRetracted(token).into()
+                terminal_signal::SubscriptionRetracted::new(token).into()
             }
             None => terminal_signal::TerminalRejected {
-                terminal: token.0,
+                terminal: token.into_payload(),
                 reason: terminal_signal::TerminalRejectionReason::NotConnected,
             }
             .into(),
@@ -224,8 +225,10 @@ impl TerminalSignalControl {
         match self.input_port.close_human_input() {
             Ok(lease) => {
                 let signal_lease = Self::signal_lease(lease);
-                self.signal_leases
-                    .insert(signal_lease.0.clone().into_u64(), prompt_state.clone());
+                self.signal_leases.insert(
+                    signal_lease.payload().clone().into_u64(),
+                    prompt_state.clone(),
+                );
                 Ok(terminal_signal::GateAcquired {
                     terminal: acquire.terminal,
                     lease: signal_lease,
@@ -250,10 +253,8 @@ impl TerminalSignalControl {
         &mut self,
         release: terminal_signal::ReleaseInputGate,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
-        if !self
-            .signal_leases
-            .contains_key(&release.lease.0.clone().into_u64())
-        {
+        let lease_key = release.lease.payload().clone().into_u64();
+        if !self.signal_leases.contains_key(&lease_key) {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: release.terminal,
                 reason: terminal_signal::InjectionRejectionReason::UnknownLease,
@@ -264,8 +265,7 @@ impl TerminalSignalControl {
         let terminal_lease = Self::terminal_lease(&release.lease);
         match self.input_port.open_human_input(terminal_lease) {
             Ok(gate_release) => {
-                self.signal_leases
-                    .remove(&release.lease.0.clone().into_u64());
+                self.signal_leases.remove(&lease_key);
                 Ok(terminal_signal::GateReleased {
                     terminal: release.terminal,
                     lease: release.lease,
@@ -276,8 +276,7 @@ impl TerminalSignalControl {
                 .into())
             }
             Err(TerminalCellError::StaleInputGateLease) => {
-                self.signal_leases
-                    .remove(&release.lease.0.clone().into_u64());
+                self.signal_leases.remove(&lease_key);
                 Ok(terminal_signal::InjectionRejected {
                     terminal: release.terminal,
                     reason: terminal_signal::InjectionRejectionReason::UnknownLease,
@@ -292,10 +291,8 @@ impl TerminalSignalControl {
         &mut self,
         injection: terminal_signal::WriteInjection,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
-        let Some(prompt_state) = self
-            .signal_leases
-            .get(&injection.lease.0.clone().into_u64())
-        else {
+        let lease_key = injection.lease.payload().clone().into_u64();
+        let Some(prompt_state) = self.signal_leases.get(&lease_key) else {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: injection.terminal,
                 reason: terminal_signal::InjectionRejectionReason::UnknownLease,
@@ -404,13 +401,15 @@ impl TerminalSignalControl {
     }
 
     fn signal_lease(lease: TerminalInputGateLease) -> terminal_signal::InputGateLease {
-        terminal_signal::InputGateLease(terminal_signal::InputGateLeaseIdentifier::new(
+        terminal_signal::InputGateLease::new(terminal_signal::InputGateLeaseIdentifier::new(
             lease.sequence().into_u64(),
         ))
     }
 
     fn terminal_lease(lease: &terminal_signal::InputGateLease) -> TerminalInputGateLease {
-        TerminalInputGateLease::new(TerminalInputGateSequence::new(lease.0.clone().into_u64()))
+        TerminalInputGateLease::new(TerminalInputGateSequence::new(
+            lease.payload().clone().into_u64(),
+        ))
     }
 
     /// Lower terminal-cell's `u8` byte buffer into the schema-emitted

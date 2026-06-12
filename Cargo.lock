@@ -431,8 +431,8 @@ dependencies = [
 
 [[package]]
 name = "nota-next"
-version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#ae5c25cd42b65512be941b274922c9e17bf67176"
+version = "0.4.0"
+source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#065fa2ad2fa05bac87677f0bfa826bd92dbd139a"
 dependencies = [
  "nota-next-derive",
  "rkyv",
@@ -441,7 +441,7 @@ dependencies = [
 [[package]]
 name = "nota-next-derive"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#ae5c25cd42b65512be941b274922c9e17bf67176"
+source = "git+https://github.com/LiGoldragon/nota-next.git?branch=main#065fa2ad2fa05bac87677f0bfa826bd92dbd139a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -693,8 +693,8 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "schema-next"
-version = "0.1.4"
-source = "git+https://github.com/LiGoldragon/schema-next.git?branch=main#77e71a410d03e3cc5c16cebd82202e712439e648"
+version = "0.2.0"
+source = "git+https://github.com/LiGoldragon/schema-next.git?branch=main#2397d5b2a4a8f35da1ba5957f48337f9a579db00"
 dependencies = [
  "nota-next",
  "rkyv",
@@ -702,8 +702,8 @@ dependencies = [
 
 [[package]]
 name = "schema-rust-next"
-version = "0.5.1"
-source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#7282446ed3f41663d9e9ef1753a9a2b3514cf829"
+version = "0.5.3"
+source = "git+https://github.com/LiGoldragon/schema-rust-next.git?branch=main#cedb2e0652b2d8e3aa24c96a82b6daee6af785ad"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -903,8 +903,8 @@ dependencies = [
 
 [[package]]
 name = "signal-terminal"
-version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#0a11eb3717b0e74d31cfd1f808a54e8d3b7229b2"
+version = "0.2.1"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#1310579406b1cdf3e7608274e2e378a9f6a9f623"
 dependencies = [
  "nota-next",
  "rkyv",
@@ -978,7 +978,7 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#3c81cd272e9e68863ca88e1e9e0bd2b29a9d770e"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=main#b4a7e8e8d6a8ae89cc8472621561368a453ef1a0"
 dependencies = [
  "crossterm",
  "kameo",
@@ -1120,8 +1120,8 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.6.0"
-source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#ae2e81755f8f1536329f372bdcc78dbbcd065999"
+version = "0.6.1"
+source = "git+https://github.com/LiGoldragon/triad-runtime.git?branch=main#6ea831627d13793a4c42d7f9b9174b47279a9b2b"
 dependencies = [
  "kameo",
  "rustix 1.1.4",

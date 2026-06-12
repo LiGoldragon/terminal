@@ -2,9 +2,7 @@ use std::path::{Path, PathBuf};
 
 use signal_terminal::TerminalDaemonConfiguration;
 use thiserror::Error;
-use triad_runtime::{
-    DaemonConfiguration, RequestConcurrencyLimit, SocketMode as RuntimeSocketMode,
-};
+use triad_runtime::{BindingSurface, RequestConcurrencyLimit, SocketMode as RuntimeSocketMode};
 
 use crate::{
     SupervisionListener, SupervisionProfile, SupervisionSocketMode, tables::StoreLocation,
@@ -72,7 +70,7 @@ impl Configuration {
     }
 }
 
-impl DaemonConfiguration for Configuration {
+impl BindingSurface for Configuration {
     fn socket_path(&self) -> &Path {
         &self.socket_path
     }

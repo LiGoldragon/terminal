@@ -2,10 +2,20 @@
 
 Terminal harness control for Persona.
 
-The crate provides a durable terminal-cell daemon, detachable viewer, input
-sender, capture client, and `signal-terminal` adapter. `terminal-cell`
-owns the low-level PTY and transcript machinery. This crate is the
-Persona-facing terminal owner.
+The crate provides the Persona-facing terminal owner, the ordinary
+`terminal` Signal CLI, the `meta-terminal` policy CLI, and local PTY/viewer
+helpers around `terminal-cell`. `terminal-cell` owns the low-level PTY and
+transcript machinery.
+
+## Component CLIs
+
+`terminal <NOTA>` sends one ordinary `signal-terminal::Input` over the
+component communication socket (`TERMINAL_SOCKET`, default
+`/tmp/terminal.sock`) and prints the typed reply as NOTA.
+
+`meta-terminal <NOTA>` sends one `meta-signal-terminal` request over the
+owner-only meta socket (`TERMINAL_META_SOCKET`, default
+`/tmp/meta-terminal.sock`) and prints the typed reply as NOTA.
 
 ## PTY input
 
@@ -19,6 +29,9 @@ tests that need an occupied prompt buffer.
 requests scrollback replay, writes the current bytes to stdout, and exits. It is
 a debugging and guard substrate for higher layers; it does not interpret Persona
 messages.
+
+`terminal-viewer` is the local terminal-cell viewer helper. It is not the
+component Signal CLI.
 
 ## Named sessions
 

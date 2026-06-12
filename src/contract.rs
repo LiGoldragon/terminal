@@ -104,14 +104,20 @@ impl TerminalTransportBinding {
             Input::AcquireInputGate(acquire) => self.handle_acquire_input_gate(acquire),
             Input::ReleaseInputGate(release) => self.handle_release_input_gate(release),
             Input::WriteInjection(injection) => self.handle_write_injection(injection),
-            Input::SubscribeTerminalWorkerLifecycle(subscription) => self.handle_signal_control(
-                subscription.0.clone(),
-                Input::SubscribeTerminalWorkerLifecycle(subscription),
-            ),
-            Input::TerminalWorkerLifecycleRetraction(token) => self.handle_signal_control(
-                token.0.clone(),
-                Input::TerminalWorkerLifecycleRetraction(token),
-            ),
+            Input::SubscribeTerminalWorkerLifecycle(subscription) => {
+                let terminal = subscription.payload().clone();
+                self.handle_signal_control(
+                    terminal,
+                    Input::SubscribeTerminalWorkerLifecycle(subscription),
+                )
+            }
+            Input::TerminalWorkerLifecycleRetraction(token) => {
+                let terminal = token.payload().clone();
+                self.handle_signal_control(
+                    terminal,
+                    Input::TerminalWorkerLifecycleRetraction(token),
+                )
+            }
             Input::ListSessions(_) | Input::ResolveSession(_) => Err(Error::InvalidArgument {
                 detail: "session registry queries belong to the consolidated terminal daemon"
                     .to_string(),
@@ -120,8 +126,9 @@ impl TerminalTransportBinding {
     }
 
     fn handle_connection(&self, connection: TerminalConnection) -> Output {
-        if !self.contains_terminal(&connection.0) {
-            return Self::rejected(connection.0, TerminalRejectionReason::NotConnected);
+        let terminal = connection.into_payload();
+        if !self.contains_terminal(&terminal) {
+            return Self::rejected(terminal, TerminalRejectionReason::NotConnected);
         }
         self.ready_event()
     }
@@ -135,7 +142,8 @@ impl TerminalTransportBinding {
     }
 
     fn handle_capture(&self, capture: TerminalCapture) -> Result<Output> {
-        self.handle_signal_control(capture.0.clone(), Input::TerminalCapture(capture))
+        let terminal = capture.payload().clone();
+        self.handle_signal_control(terminal, Input::TerminalCapture(capture))
     }
 
     fn handle_register_prompt_pattern(
@@ -159,7 +167,8 @@ impl TerminalTransportBinding {
     }
 
     fn handle_list_prompt_patterns(&self, list: ListPromptPatterns) -> Result<Output> {
-        self.handle_signal_control(list.0.clone(), Input::ListPromptPatterns(list))
+        let terminal = list.payload().clone();
+        self.handle_signal_control(terminal, Input::ListPromptPatterns(list))
     }
 
     fn handle_acquire_input_gate(&self, acquire: AcquireInputGate) -> Result<Output> {

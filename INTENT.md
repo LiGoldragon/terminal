@@ -70,6 +70,11 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   surfaces; daemon startup configuration arrives as a signal-encoded
   rkyv file. The daemon's external surface is signal-frame frames.
   No NOTA on the wire between components.
+- **The component CLIs are the two Signal clients.** `terminal` is the
+  ordinary `signal-terminal` client and `meta-terminal` is the
+  meta-signal-terminal client. Local PTY/viewer helpers keep explicit
+  names such as `terminal-viewer`, `terminal-send`, and
+  `terminal-capture`.
 - **State-bearing runtime is actors, not shared mutable state.**
   `TerminalSignalControl` is a Kameo actor owning prompt-pattern
   registry, input-gate leases, and injection decisions; production

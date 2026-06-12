@@ -62,6 +62,7 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
+              cargoExtraArgs = "--features nota-text";
               pname = "terminal";
               meta.mainProgram = "terminal";
             }
@@ -136,7 +137,11 @@
           };
           view = {
             type = "app";
-            program = "${package}/bin/terminal";
+            program = "${package}/bin/terminal-viewer";
+          };
+          meta = {
+            type = "app";
+            program = "${package}/bin/meta-terminal";
           };
           send = {
             type = "app";
@@ -242,6 +247,20 @@
             // {
               inherit (context) cargoArtifacts;
               cargoTestExtraArgs = "--test terminal_supervisor terminal_supervisor_command_line_uses_spawn_envelope_environment";
+            }
+          );
+          terminal-cli-reaches-working-socket = context.craneLib.cargoTest (
+            context.commonArgs
+            // {
+              inherit (context) cargoArtifacts;
+              cargoTestExtraArgs = "--features nota-text --test component_cli terminal_cli_reaches_working_socket_and_prints_typed_reply -- --exact";
+            }
+          );
+          meta-terminal-cli-reaches-policy-socket = context.craneLib.cargoTest (
+            context.commonArgs
+            // {
+              inherit (context) cargoArtifacts;
+              cargoTestExtraArgs = "--features nota-text --test component_cli meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply -- --exact";
             }
           );
         }
