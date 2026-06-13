@@ -424,7 +424,7 @@ dependencies = [
 [[package]]
 name = "meta-signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=main#e9e031154c39b899d73cc434f0309ffb5fb4eef7"
+source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=main#125b8c828b17957c401ffdf382c31108d8959e20"
 dependencies = [
  "nota-next",
  "rkyv",
@@ -963,7 +963,7 @@ dependencies = [
 [[package]]
 name = "signal-terminal"
 version = "0.2.1"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#8dc8cd447d34c81c75a2c7c10c3bb041abc658da"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=main#94f64cd508c1be1de51d26b41b82f8143ff122bf"
 dependencies = [
  "nota-next",
  "rkyv",
