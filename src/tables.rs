@@ -8,8 +8,9 @@ use rkyv::validation::Validator;
 use rkyv::validation::archive::ArchiveValidator;
 use rkyv::validation::shared::SharedValidator;
 use sema_engine::{
-    Engine, EngineOpen, EngineStoredValue, KeyedAssertion, KeyedMutation, QueryPlan, RecordKey,
-    SchemaVersion, TableDescriptor, TableName, TableReference,
+    Engine, EngineOpen, EngineStoredValue, FamilyName, KeyedAssertion, KeyedMutation, QueryPlan,
+    RecordKey, SchemaHash, SchemaVersion, TableDescriptor, TableName, TableReference,
+    VersionedStoreName, VersioningPolicy,
 };
 use signal_terminal::{
     TerminalDeliveryAttemptObservation, TerminalEventObservation, TerminalName,
@@ -26,6 +27,12 @@ const TERMINAL_EVENTS: TableName = TableName::new("terminal_events");
 const VIEWER_ATTACHMENTS: TableName = TableName::new("viewer_attachments");
 const SESSION_HEALTH: TableName = TableName::new("session_health");
 const SESSION_ARCHIVE: TableName = TableName::new("session_archive");
+const SESSIONS_FAMILY: &str = "terminal-session";
+const DELIVERY_ATTEMPTS_FAMILY: &str = "terminal-delivery-attempt";
+const TERMINAL_EVENTS_FAMILY: &str = "terminal-event";
+const VIEWER_ATTACHMENTS_FAMILY: &str = "terminal-viewer-attachment";
+const SESSION_HEALTH_FAMILY: &str = "terminal-session-health";
+const SESSION_ARCHIVE_FAMILY: &str = "terminal-session-archive";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreLocation {
@@ -64,16 +71,28 @@ pub struct TerminalTables {
 
 impl TerminalTables {
     pub fn open(store: &StoreLocation) -> Result<Self> {
-        let mut engine = Engine::open(EngineOpen::new(
-            store.as_path().to_path_buf(),
-            TERMINAL_SCHEMA_VERSION,
+        let mut engine = Engine::open(Self::engine_open(store.as_path()))?;
+        let sessions = engine.register_table(Self::family_descriptor(SESSIONS, SESSIONS_FAMILY))?;
+        let delivery_attempts = engine.register_table(Self::family_descriptor(
+            DELIVERY_ATTEMPTS,
+            DELIVERY_ATTEMPTS_FAMILY,
         ))?;
-        let sessions = engine.register_table(TableDescriptor::new(SESSIONS))?;
-        let delivery_attempts = engine.register_table(TableDescriptor::new(DELIVERY_ATTEMPTS))?;
-        let terminal_events = engine.register_table(TableDescriptor::new(TERMINAL_EVENTS))?;
-        let viewer_attachments = engine.register_table(TableDescriptor::new(VIEWER_ATTACHMENTS))?;
-        let session_health = engine.register_table(TableDescriptor::new(SESSION_HEALTH))?;
-        let session_archive = engine.register_table(TableDescriptor::new(SESSION_ARCHIVE))?;
+        let terminal_events = engine.register_table(Self::family_descriptor(
+            TERMINAL_EVENTS,
+            TERMINAL_EVENTS_FAMILY,
+        ))?;
+        let viewer_attachments = engine.register_table(Self::family_descriptor(
+            VIEWER_ATTACHMENTS,
+            VIEWER_ATTACHMENTS_FAMILY,
+        ))?;
+        let session_health = engine.register_table(Self::family_descriptor(
+            SESSION_HEALTH,
+            SESSION_HEALTH_FAMILY,
+        ))?;
+        let session_archive = engine.register_table(Self::family_descriptor(
+            SESSION_ARCHIVE,
+            SESSION_ARCHIVE_FAMILY,
+        ))?;
         Ok(Self {
             engine,
             sessions,
@@ -83,6 +102,29 @@ impl TerminalTables {
             session_health,
             session_archive,
         })
+    }
+
+    fn engine_open(path: &Path) -> EngineOpen {
+        EngineOpen::new(path.to_path_buf(), TERMINAL_SCHEMA_VERSION)
+            .with_versioning(Self::versioning_policy())
+    }
+
+    fn versioning_policy() -> VersioningPolicy {
+        VersioningPolicy::new(VersionedStoreName::new("terminal"))
+    }
+
+    fn family_descriptor<RecordValue>(
+        table: TableName,
+        family: &str,
+    ) -> TableDescriptor<RecordValue> {
+        TableDescriptor::new(
+            table,
+            FamilyName::new(family),
+            SchemaHash::for_label(format!(
+                "terminal-{family}-v{}",
+                TERMINAL_SCHEMA_VERSION.value()
+            )),
+        )
     }
 
     pub fn put_session(&self, session: &TerminalSessionObservation) -> Result<()> {
