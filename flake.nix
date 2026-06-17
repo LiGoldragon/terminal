@@ -224,7 +224,7 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              cargoTestExtraArgs = "--test terminal_registry terminal_daemon_registration_writes_named_session -- --exact";
+              cargoTestExtraArgs = "--test terminal_registry terminal_daemon_registration_writes_named_session_with_typed_control_and_data_paths -- --exact";
             }
           );
           terminal-supervisor-socket-routes-through-component-sema = context.craneLib.cargoTest (

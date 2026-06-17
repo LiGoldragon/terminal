@@ -811,8 +811,8 @@ impl From<Vec<TerminalByte>> for TerminalBytes {
 
 #[rustfmt::skip]
 impl SocketPath {
-    pub fn new(payload: Path) -> Self {
-        Self(payload)
+    pub fn new(payload: impl Into<String>) -> Self {
+        Self(payload.into())
     }
     pub fn payload(&self) -> &Path {
         &self.0
