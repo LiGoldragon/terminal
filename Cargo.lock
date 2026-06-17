@@ -799,7 +799,7 @@ dependencies = [
 [[package]]
 name = "sema-engine"
 version = "0.6.2"
-source = "git+https://github.com/LiGoldragon/sema-engine.git?branch=main#1afcd012baad5f64911e758e554651f188e78d94"
+source = "git+https://github.com/LiGoldragon/sema-engine.git?branch=main#73eea24b294a2bdcac470111afc387e7ce06608e"
 dependencies = [
  "blake3",
  "rkyv",
@@ -969,7 +969,7 @@ dependencies = [
 [[package]]
 name = "signal-sema"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/signal-sema.git?branch=main#33f62840678530289e9b96485453f7d86e343182"
+source = "git+https://github.com/LiGoldragon/signal-sema.git?branch=main#bdd7fe369952cb51e4476f201a3419ae5b35d444"
 dependencies = [
  "rkyv",
  "thiserror 2.0.18",
