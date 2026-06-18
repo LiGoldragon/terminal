@@ -47,8 +47,8 @@ impl TerminalTransportBinding {
 
     pub fn ready_event(&self) -> Output {
         TerminalReady {
-            terminal: self.terminal.clone(),
-            generation: self.generation.clone(),
+            terminal: self.terminal.clone().into(),
+            generation: self.generation.clone().into(),
         }
         .into()
     }
@@ -61,9 +61,12 @@ impl TerminalTransportBinding {
                 .saturating_add(1),
         );
         TranscriptDelta {
-            terminal: self.terminal.clone(),
-            sequence: self.transcript_sequence.clone(),
-            bytes: TerminalTranscriptBytes::new(Self::bytes_to_signal_bytes(&bytes.into())),
+            terminal: self.terminal.clone().into(),
+            sequence: self.transcript_sequence.clone().into(),
+            transcript_bytes: TerminalTranscriptBytes::new(Self::bytes_to_signal_bytes(
+                &bytes.into(),
+            ))
+            .into(),
         }
         .into()
     }
@@ -80,7 +83,7 @@ impl TerminalTransportBinding {
             Input::TerminalInput(input) => self.handle_input(input),
             Input::TerminalResize(resize) => self.handle_resize(resize),
             Input::TerminalDetachment(detachment) => {
-                if !self.contains_terminal(&detachment.terminal) {
+                if !self.contains_signal_terminal(&detachment.terminal) {
                     return Ok(Self::rejected(
                         detachment.terminal,
                         TerminalRejectionReason::NotConnected,
@@ -88,8 +91,8 @@ impl TerminalTransportBinding {
                 }
                 Ok(TerminalDetached {
                     terminal: detachment.terminal,
-                    generation: self.generation.clone(),
-                    reason: detachment.reason,
+                    generation: self.generation.clone().into(),
+                    terminal_detachment_reason: detachment.terminal_detachment_reason,
                 }
                 .into())
             }
@@ -127,7 +130,7 @@ impl TerminalTransportBinding {
 
     fn handle_connection(&self, connection: TerminalConnection) -> Output {
         let terminal = connection.into_payload();
-        if !self.contains_terminal(&terminal) {
+        if !self.contains_signal_terminal(&terminal) {
             return Self::rejected(terminal, TerminalRejectionReason::NotConnected);
         }
         self.ready_event()
@@ -183,8 +186,12 @@ impl TerminalTransportBinding {
         self.handle_signal_control(injection.terminal.clone(), Input::WriteInjection(injection))
     }
 
-    fn handle_signal_control(&self, terminal: TerminalName, request: Input) -> Result<Output> {
-        if !self.contains_terminal(&terminal) {
+    fn handle_signal_control(
+        &self,
+        terminal: signal_terminal::Terminal,
+        request: Input,
+    ) -> Result<Output> {
+        if !self.contains_signal_terminal(&terminal) {
             return Ok(Self::rejected(
                 terminal,
                 TerminalRejectionReason::NotConnected,
@@ -193,15 +200,19 @@ impl TerminalTransportBinding {
         self.socket().signal(request)
     }
 
-    fn contains_terminal(&self, terminal: &TerminalName) -> bool {
-        terminal == &self.terminal
+    fn contains_signal_terminal(&self, terminal: &signal_terminal::Terminal) -> bool {
+        terminal.payload() == &self.terminal
     }
 
     fn socket(&self) -> TerminalSocket {
         TerminalSocket::from_control_socket(self.socket_path.clone())
     }
 
-    fn rejected(terminal: TerminalName, reason: TerminalRejectionReason) -> Output {
-        TerminalRejected { terminal, reason }.into()
+    fn rejected(terminal: signal_terminal::Terminal, reason: TerminalRejectionReason) -> Output {
+        TerminalRejected {
+            terminal,
+            terminal_rejection_reason: reason,
+        }
+        .into()
     }
 }

@@ -173,8 +173,8 @@ fn terminal_tables_cover_t6_state_records() {
             TerminalObservationSequence::new(1),
             terminal.clone(),
             Output::from(TerminalReady {
-                terminal: terminal.clone(),
-                generation: TerminalGeneration::new(1),
+                terminal: terminal.clone().into(),
+                generation: TerminalGeneration::new(1).into(),
             }),
         ))
         .expect("terminal event is written");

@@ -560,7 +560,8 @@ impl TerminalControlConnection {
                     .iter()
                     .cloned()
                     .map(TerminalSignalControl::worker_lifecycle)
-                    .collect(),
+                    .collect::<Vec<_>>()
+                    .into(),
             }
             .into(),
         )?;
@@ -575,7 +576,7 @@ impl TerminalControlConnection {
             SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
                 terminal_signal::TerminalWorkerLifecycleEvent {
                     terminal: terminal_name.clone(),
-                    observation: TerminalSignalControl::worker_lifecycle(event),
+                    observation: TerminalSignalControl::worker_lifecycle(event).into(),
                 }
                 .into(),
             )?;

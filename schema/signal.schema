@@ -32,27 +32,27 @@
   ErrorMessage String
 
   ListSessionsRequest { }
-  ResolveSessionRequest { SessionName * }
-  RegisterPromptPatternRequest { SessionName * PromptPatternText * }
-  AcquireInputGateRequest { SessionName * PromptPatternIdentifier * }
-  WriteInjectionRequest { SessionName * InputLeaseIdentifier * InjectionSequence * TerminalBytes * }
-  ReleaseInputGateRequest { SessionName * InputLeaseIdentifier * }
-  CaptureTranscriptRequest { SessionName * }
+  ResolveSessionRequest { SessionName }
+  RegisterPromptPatternRequest { SessionName PromptPatternText }
+  AcquireInputGateRequest { SessionName PromptPatternIdentifier }
+  WriteInjectionRequest { SessionName InputLeaseIdentifier InjectionSequence TerminalBytes }
+  ReleaseInputGateRequest { SessionName InputLeaseIdentifier }
+  CaptureTranscriptRequest { SessionName }
 
   PromptPatternText String
-  SessionRecord { SessionName * SessionIdentifier * SocketPath * }
+  SessionRecord { SessionName SessionIdentifier SocketPath }
   SessionRecords (Vec SessionRecord)
-  SessionList { SessionRecords * }
-  SessionResolution { SessionRecord * }
-  PromptPatternRegistration { PromptPatternIdentifier * }
+  SessionList { SessionRecords }
+  SessionResolution { SessionRecord }
+  PromptPatternRegistration { PromptPatternIdentifier }
   PromptState [Clean Dirty NotChecked]
-  InputGateLease { InputLeaseIdentifier * PromptState * }
-  InjectionReceipt { InjectionSequence * }
-  InputGateReleaseReceipt { InputLeaseIdentifier * }
-  TranscriptCapture { TranscriptSequence * TerminalBytes * }
+  InputGateLease { InputLeaseIdentifier PromptState }
+  InjectionReceipt { InjectionSequence }
+  InputGateReleaseReceipt { InputLeaseIdentifier }
+  TranscriptCapture { TranscriptSequence TerminalBytes }
 
   OperationKind [ListSessions ResolveSession RegisterPromptPattern AcquireInputGate WriteInjection ReleaseInputGate CaptureTranscript]
   UnimplementedReason [NotInPrototypeScope SessionMissing LeaseMissing DirtyPrompt CellUnavailable]
-  RequestUnimplemented { OperationKind * UnimplementedReason * }
-  ErrorReport { ErrorMessage * }
+  RequestUnimplemented { OperationKind UnimplementedReason }
+  ErrorReport { ErrorMessage }
 }

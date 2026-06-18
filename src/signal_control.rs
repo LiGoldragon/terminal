@@ -43,27 +43,27 @@ impl TerminalSignalControl {
             terminal_signal::Input::TerminalConnection(connection) => {
                 Ok(terminal_signal::TerminalReady {
                     terminal: connection.into_payload(),
-                    generation: terminal_signal::TerminalGeneration::new(1),
+                    generation: Self::signal_generation(1),
                 }
                 .into())
             }
             terminal_signal::Input::TerminalInput(input) => {
                 self.input_port
                     .accept(TerminalInput::new(
-                        Self::signal_bytes_to_bytes(input.bytes.as_slice()),
+                        Self::input_bytes_to_bytes(&input.input_bytes),
                         InputSource::Programmatic,
                     ))
                     .map_err(TerminalSignalControlFailure::from_terminal_cell)?;
                 Ok(terminal_signal::TerminalInputAccepted {
                     terminal: input.terminal,
-                    generation: terminal_signal::TerminalGeneration::new(1),
+                    generation: Self::signal_generation(1),
                 }
                 .into())
             }
             terminal_signal::Input::TerminalResize(resize) => {
                 let size = TerminalSize::new(
-                    resize.rows.clone().into_u16(),
-                    resize.columns.clone().into_u16(),
+                    Self::rows_to_u16(&resize.rows),
+                    Self::columns_to_u16(&resize.columns),
                 );
                 self.terminal
                     .ask(size)
@@ -73,15 +73,15 @@ impl TerminalSignalControl {
                     terminal: resize.terminal,
                     rows: resize.rows,
                     columns: resize.columns,
-                    generation: terminal_signal::TerminalGeneration::new(1),
+                    generation: Self::signal_generation(1),
                 }
                 .into())
             }
             terminal_signal::Input::TerminalDetachment(detachment) => {
                 Ok(terminal_signal::TerminalDetached {
                     terminal: detachment.terminal,
-                    generation: terminal_signal::TerminalGeneration::new(1),
-                    reason: detachment.reason,
+                    generation: Self::signal_generation(1),
+                    terminal_detachment_reason: detachment.terminal_detachment_reason,
                 }
                 .into())
             }
@@ -89,34 +89,32 @@ impl TerminalSignalControl {
                 let snapshot = self.snapshot().await?;
                 Ok(terminal_signal::TerminalCaptured {
                     terminal: capture.into_payload(),
-                    generation: terminal_signal::TerminalGeneration::new(1),
-                    bytes: terminal_signal::TerminalTranscriptBytes::new(
-                        Self::bytes_to_signal_bytes(snapshot.bytes()),
-                    ),
+                    generation: Self::signal_generation(1),
+                    transcript_bytes: Self::signal_transcript_bytes(snapshot.bytes()),
                 }
                 .into())
             }
             terminal_signal::Input::RegisterPromptPattern(registration) => {
-                let pattern_id = self.register_prompt_pattern(registration.pattern);
+                let pattern_id = self.register_prompt_pattern(registration.pattern.into_payload());
                 Ok(terminal_signal::PromptPatternRegistered {
                     terminal: registration.terminal,
-                    pattern_id,
+                    pattern_identifier: pattern_id.into(),
                 }
                 .into())
             }
             terminal_signal::Input::UnregisterPromptPattern(unregistration) => {
                 self.prompt_patterns
-                    .remove(unregistration.pattern_id.as_str());
+                    .remove(unregistration.pattern_identifier.payload().as_str());
                 Ok(terminal_signal::PromptPatternUnregistered {
                     terminal: unregistration.terminal,
-                    pattern_id: unregistration.pattern_id,
+                    pattern_identifier: unregistration.pattern_identifier,
                 }
                 .into())
             }
             terminal_signal::Input::ListPromptPatterns(list) => {
                 Ok(terminal_signal::PromptPatternList {
                     terminal: list.into_payload(),
-                    entries: self.prompt_pattern_entries(),
+                    entries: self.prompt_pattern_entries().into(),
                 }
                 .into())
             }
@@ -160,7 +158,8 @@ impl TerminalSignalControl {
             .iter()
             .cloned()
             .map(Self::worker_lifecycle)
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
         Ok(terminal_signal::TerminalWorkerLifecycleSnapshot {
             terminal,
             observations,
@@ -179,11 +178,11 @@ impl TerminalSignalControl {
         match position {
             Some(index) => {
                 self.lifecycle_subscriptions.remove(index);
-                terminal_signal::SubscriptionRetracted::new(token).into()
+                terminal_signal::SubscriptionRetracted::new(token.into()).into()
             }
             None => terminal_signal::TerminalRejected {
                 terminal: token.into_payload(),
-                reason: terminal_signal::TerminalRejectionReason::NotConnected,
+                terminal_rejection_reason: terminal_signal::TerminalRejectionReason::NotConnected,
             }
             .into(),
         }
@@ -208,8 +207,11 @@ impl TerminalSignalControl {
             .iter()
             .map(
                 |(pattern_id, pattern)| terminal_signal::PromptPatternEntry {
-                    pattern_id: terminal_signal::PromptPatternIdentifier::new(pattern_id.clone()),
-                    pattern: pattern.clone(),
+                    pattern_identifier: terminal_signal::PromptPatternIdentifier::new(
+                        pattern_id.clone(),
+                    )
+                    .into(),
+                    pattern: pattern.clone().into(),
                 },
             )
             .collect()
@@ -220,15 +222,18 @@ impl TerminalSignalControl {
         acquire: terminal_signal::AcquireInputGate,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
         let prompt_state = self
-            .prompt_state(acquire.prompt_pattern_identifier.as_ref())
+            .prompt_state(
+                acquire
+                    .prompt_pattern_identifier_selection
+                    .payload()
+                    .as_ref(),
+            )
             .await?;
         match self.input_port.close_human_input() {
             Ok(lease) => {
                 let signal_lease = Self::signal_lease(lease);
-                self.signal_leases.insert(
-                    signal_lease.payload().clone().into_u64(),
-                    prompt_state.clone(),
-                );
+                self.signal_leases
+                    .insert(Self::signal_lease_key(&signal_lease), prompt_state.clone());
                 Ok(terminal_signal::GateAcquired {
                     terminal: acquire.terminal,
                     lease: signal_lease,
@@ -241,7 +246,8 @@ impl TerminalSignalControl {
                     terminal: acquire.terminal,
                     current_holder: terminal_signal::InputGateLeaseIdentifier::new(
                         lease.sequence().into_u64(),
-                    ),
+                    )
+                    .into(),
                 }
                 .into())
             }
@@ -253,11 +259,11 @@ impl TerminalSignalControl {
         &mut self,
         release: terminal_signal::ReleaseInputGate,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
-        let lease_key = release.lease.payload().clone().into_u64();
+        let lease_key = Self::signal_lease_key(&release.lease);
         if !self.signal_leases.contains_key(&lease_key) {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: release.terminal,
-                reason: terminal_signal::InjectionRejectionReason::UnknownLease,
+                injection_rejection_reason: terminal_signal::InjectionRejectionReason::UnknownLease,
             }
             .into());
         }
@@ -271,7 +277,8 @@ impl TerminalSignalControl {
                     lease: release.lease,
                     cached_human_bytes: terminal_signal::TerminalByteCount::new(
                         gate_release.held_byte_count() as u64,
-                    ),
+                    )
+                    .into(),
                 }
                 .into())
             }
@@ -279,7 +286,8 @@ impl TerminalSignalControl {
                 self.signal_leases.remove(&lease_key);
                 Ok(terminal_signal::InjectionRejected {
                     terminal: release.terminal,
-                    reason: terminal_signal::InjectionRejectionReason::UnknownLease,
+                    injection_rejection_reason:
+                        terminal_signal::InjectionRejectionReason::UnknownLease,
                 }
                 .into())
             }
@@ -291,11 +299,11 @@ impl TerminalSignalControl {
         &mut self,
         injection: terminal_signal::WriteInjection,
     ) -> Result<terminal_signal::Output, TerminalSignalControlFailure> {
-        let lease_key = injection.lease.payload().clone().into_u64();
+        let lease_key = Self::signal_lease_key(&injection.lease);
         let Some(prompt_state) = self.signal_leases.get(&lease_key) else {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: injection.terminal,
-                reason: terminal_signal::InjectionRejectionReason::UnknownLease,
+                injection_rejection_reason: terminal_signal::InjectionRejectionReason::UnknownLease,
             }
             .into());
         };
@@ -303,22 +311,23 @@ impl TerminalSignalControl {
         if matches!(prompt_state, terminal_signal::PromptState::Dirty(_)) {
             return Ok(terminal_signal::InjectionRejected {
                 terminal: injection.terminal,
-                reason: terminal_signal::InjectionRejectionReason::DirtyPrompt,
+                injection_rejection_reason: terminal_signal::InjectionRejectionReason::DirtyPrompt,
             }
             .into());
         }
 
         self.input_port
             .accept(TerminalInput::new(
-                Self::signal_bytes_to_bytes(injection.bytes.as_slice()),
+                Self::input_bytes_to_bytes(&injection.input_bytes),
                 InputSource::Programmatic,
             ))
             .map_err(TerminalSignalControlFailure::from_terminal_cell)?;
         let snapshot = self.snapshot().await?;
         Ok(terminal_signal::InjectionAck {
             terminal: injection.terminal,
-            generation: terminal_signal::TerminalGeneration::new(1),
-            sequence: terminal_signal::TerminalSequence::new(snapshot.last_sequence().into_u64()),
+            generation: Self::signal_generation(1),
+            sequence: terminal_signal::TerminalSequence::new(snapshot.last_sequence().into_u64())
+                .into(),
         }
         .into())
     }
@@ -362,10 +371,10 @@ impl TerminalSignalControl {
         match pattern {
             terminal_signal::PromptPattern::LiteralSuffix(suffix) => Ok(Self::literal_suffix_gap(
                 transcript,
-                &Self::signal_bytes_to_bytes(suffix.as_slice()),
+                &Self::signal_bytes_to_bytes(suffix.payload().as_slice()),
             )),
             terminal_signal::PromptPattern::RegexSuffix(pattern) => {
-                let pattern = Self::signal_bytes_to_bytes(pattern.as_slice());
+                let pattern = Self::signal_bytes_to_bytes(pattern.payload().as_slice());
                 let pattern = std::str::from_utf8(&pattern).map_err(|error| {
                     TerminalSignalControlFailure::new(format!(
                         "prompt regex pattern is not utf-8: {error}"
@@ -400,16 +409,41 @@ impl TerminalSignalControl {
             })
     }
 
-    fn signal_lease(lease: TerminalInputGateLease) -> terminal_signal::InputGateLease {
+    fn signal_lease(lease: TerminalInputGateLease) -> terminal_signal::Lease {
         terminal_signal::InputGateLease::new(terminal_signal::InputGateLeaseIdentifier::new(
             lease.sequence().into_u64(),
         ))
+        .into()
     }
 
-    fn terminal_lease(lease: &terminal_signal::InputGateLease) -> TerminalInputGateLease {
-        TerminalInputGateLease::new(TerminalInputGateSequence::new(
-            lease.payload().clone().into_u64(),
-        ))
+    fn terminal_lease(lease: &terminal_signal::Lease) -> TerminalInputGateLease {
+        TerminalInputGateLease::new(TerminalInputGateSequence::new(Self::signal_lease_key(
+            lease,
+        )))
+    }
+
+    fn signal_lease_key(lease: &terminal_signal::Lease) -> u64 {
+        *lease.payload().payload().payload()
+    }
+
+    fn signal_generation(value: u64) -> terminal_signal::Generation {
+        terminal_signal::TerminalGeneration::new(value).into()
+    }
+
+    fn rows_to_u16(rows: &terminal_signal::Rows) -> u16 {
+        *rows.payload().payload() as u16
+    }
+
+    fn columns_to_u16(columns: &terminal_signal::Columns) -> u16 {
+        *columns.payload().payload() as u16
+    }
+
+    fn input_bytes_to_bytes(input_bytes: &terminal_signal::InputBytes) -> Vec<u8> {
+        Self::signal_bytes_to_bytes(input_bytes.payload().payload().as_slice())
+    }
+
+    fn signal_transcript_bytes(bytes: &[u8]) -> terminal_signal::TranscriptBytes {
+        terminal_signal::TerminalTranscriptBytes::new(Self::bytes_to_signal_bytes(bytes)).into()
     }
 
     /// Lower terminal-cell's `u8` byte buffer into the schema-emitted
@@ -434,8 +468,8 @@ impl TerminalSignalControl {
             TerminalWorkerLifecycle::Stopped { worker, reason } => {
                 terminal_signal::TerminalWorkerLifecycle::Stopped(
                     terminal_signal::TerminalWorkerStop {
-                        worker: Self::worker_kind(worker),
-                        reason: Self::worker_stop(reason),
+                        terminal_worker_kind: Self::worker_kind(worker),
+                        terminal_worker_stop_reason: Self::worker_stop(reason),
                     },
                 )
             }

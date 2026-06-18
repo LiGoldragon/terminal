@@ -7,15 +7,17 @@ use signal_frame::{
     SubReply,
 };
 use signal_terminal::{
-    AcquireInputGate, Frame, FrameBody, GateAcquired, GateBusy, GateReleased, InjectionAck,
-    InjectionRejected, Input, InputGateLease, InputGateLeaseIdentifier, InputGateReason,
-    ListPromptPatterns, Output, PromptPattern, PromptPatternBytes, PromptPatternList,
-    PromptPatternRegistered, PromptPatternUnregistered, PromptState, RegisterPromptPattern,
-    ReleaseInputGate, SessionResolved, SubscribeTerminalWorkerLifecycle, TerminalCapture,
-    TerminalCaptured, TerminalColumns, TerminalConnection, TerminalDetached, TerminalInput,
-    TerminalInputAccepted, TerminalInputBytes, TerminalName, TerminalReady, TerminalRejected,
-    TerminalResize, TerminalResized, TerminalRows, TerminalWorkerLifecycleSnapshot,
-    TranscriptDelta, UnregisterPromptPattern, WriteInjection,
+    AcquireInputGate, CachedHumanBytes, Columns, CurrentHolder, DataSocketPath, Frame, FrameBody,
+    GateAcquired, GateBusy, GateReleased, Generation, InjectionAck, InjectionRejected, Input,
+    InputBytes, InputGateLease, InputGateLeaseIdentifier, InputGateReason, Lease,
+    ListPromptPatterns, Name, Observations, Output, PatternIdentifier, PromptPattern,
+    PromptPatternBytes, PromptPatternList, PromptPatternRegistered, PromptPatternUnregistered,
+    PromptState, RegisterPromptPattern, ReleaseInputGate, Rows, Sequence, SessionResolved,
+    SubscribeTerminalWorkerLifecycle, Terminal, TerminalCapture, TerminalCaptured, TerminalColumns,
+    TerminalConnection, TerminalDetached, TerminalInput, TerminalInputAccepted, TerminalInputBytes,
+    TerminalName, TerminalReady, TerminalRejected, TerminalResize, TerminalResized, TerminalRows,
+    TerminalWorkerLifecycleSnapshot, TranscriptBytes, TranscriptDelta, UnregisterPromptPattern,
+    WriteInjection,
 };
 
 use crate::pty::TerminalSocket;
@@ -81,78 +83,92 @@ pub enum TerminalSignalOperation {
 impl TerminalSignalOperation {
     fn into_request(self, terminal: TerminalName) -> Input {
         match self {
-            Self::Connect => TerminalConnection::new(terminal).into(),
+            Self::Connect => TerminalConnection::new(terminal.into()).into(),
             Self::Input { bytes } => TerminalInput {
-                terminal,
-                bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
+                terminal: terminal.into(),
+                input_bytes: Self::input_bytes(bytes),
             }
             .into(),
             Self::Prompt { text } => {
                 let mut bytes = text.into_bytes();
                 bytes.push(b'\r');
                 TerminalInput {
-                    terminal,
-                    bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
+                    terminal: terminal.into(),
+                    input_bytes: Self::input_bytes(bytes),
                 }
                 .into()
             }
-            Self::Capture => TerminalCapture::new(terminal).into(),
+            Self::Capture => TerminalCapture::new(terminal.into()).into(),
             Self::Resize { rows, columns } => TerminalResize {
-                terminal,
-                rows: TerminalRows::new(u64::from(rows)),
-                columns: TerminalColumns::new(u64::from(columns)),
+                terminal: terminal.into(),
+                rows: TerminalRows::new(u64::from(rows)).into(),
+                columns: TerminalColumns::new(u64::from(columns)).into(),
             }
             .into(),
             Self::RegisterLiteralPrompt { suffix } => RegisterPromptPattern {
-                terminal,
+                terminal: terminal.into(),
                 pattern: PromptPattern::LiteralSuffix(PromptPatternBytes::new(Self::signal_bytes(
                     &suffix,
-                ))),
+                )))
+                .into(),
             }
             .into(),
             Self::RegisterRegexPrompt { pattern } => RegisterPromptPattern {
-                terminal,
+                terminal: terminal.into(),
                 pattern: PromptPattern::RegexSuffix(PromptPatternBytes::new(Self::signal_bytes(
                     &pattern,
-                ))),
+                )))
+                .into(),
             }
             .into(),
             Self::UnregisterPrompt { pattern_id } => UnregisterPromptPattern {
-                terminal,
-                pattern_id: signal_terminal::PromptPatternIdentifier::new(pattern_id),
+                terminal: terminal.into(),
+                pattern_identifier: signal_terminal::PromptPatternIdentifier::new(pattern_id)
+                    .into(),
             }
             .into(),
-            Self::ListPrompts => ListPromptPatterns::new(terminal).into(),
+            Self::ListPrompts => ListPromptPatterns::new(terminal.into()).into(),
             Self::AcquireGate { pattern_id } => AcquireInputGate {
-                terminal,
-                reason: InputGateReason::new("terminal signal cli".to_string()),
-                prompt_pattern_identifier: pattern_id
-                    .map(signal_terminal::PromptPatternIdentifier::new),
+                terminal: terminal.into(),
+                input_gate_reason: InputGateReason::new("terminal signal cli".to_string()),
+                prompt_pattern_identifier_selection: pattern_id
+                    .map(signal_terminal::PromptPatternIdentifier::new)
+                    .into(),
             }
             .into(),
             Self::ReleaseGate { lease_id } => ReleaseInputGate {
-                terminal,
-                lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
+                terminal: terminal.into(),
+                lease: Self::lease(lease_id),
             }
             .into(),
             Self::Inject { lease_id, bytes } => WriteInjection {
-                terminal,
-                lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
-                bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
+                terminal: terminal.into(),
+                lease: Self::lease(lease_id),
+                input_bytes: Self::input_bytes(bytes),
             }
             .into(),
             Self::InjectPrompt { lease_id, text } => {
                 let mut bytes = text.into_bytes();
                 bytes.push(b'\r');
                 WriteInjection {
-                    terminal,
-                    lease: InputGateLease::new(InputGateLeaseIdentifier::new(lease_id)),
-                    bytes: TerminalInputBytes::new(Self::signal_bytes(&bytes)),
+                    terminal: terminal.into(),
+                    lease: Self::lease(lease_id),
+                    input_bytes: Self::input_bytes(bytes),
                 }
                 .into()
             }
-            Self::WorkerLifecycleSnapshot => SubscribeTerminalWorkerLifecycle::new(terminal).into(),
+            Self::WorkerLifecycleSnapshot => {
+                SubscribeTerminalWorkerLifecycle::new(terminal.into()).into()
+            }
         }
+    }
+
+    fn input_bytes(bytes: Vec<u8>) -> InputBytes {
+        TerminalInputBytes::new(Self::signal_bytes(&bytes)).into()
+    }
+
+    fn lease(identifier: u64) -> Lease {
+        InputGateLease::new(InputGateLeaseIdentifier::new(identifier)).into()
     }
 
     /// Widen a `u8` argument byte buffer into the schema-emitted `Integer`
@@ -409,8 +425,8 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "TerminalReady\t{}\t{}",
-                terminal.as_str(),
-                generation.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::generation_value(generation)
             )?,
             Output::TerminalInputAccepted(TerminalInputAccepted {
                 terminal,
@@ -418,19 +434,19 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "TerminalInputAccepted\t{}\t{}",
-                terminal.as_str(),
-                generation.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::generation_value(generation)
             )?,
             Output::TranscriptDelta(TranscriptDelta {
                 terminal,
                 sequence,
-                bytes,
+                transcript_bytes,
             }) => writeln!(
                 output,
                 "TranscriptDelta\t{}\t{}\t{}",
-                terminal.as_str(),
-                sequence.clone().into_u64(),
-                HexBytes::new(bytes.as_slice())
+                Self::terminal_text(terminal),
+                Self::sequence_value(sequence),
+                HexBytes::new(Self::transcript_bytes(transcript_bytes))
             )?,
             Output::TerminalResized(TerminalResized {
                 terminal,
@@ -440,67 +456,70 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "TerminalResized\t{}\t{}\t{}\t{}",
-                terminal.as_str(),
-                rows.clone().into_u16(),
-                columns.clone().into_u16(),
-                generation.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::rows_value(rows),
+                Self::columns_value(columns),
+                Self::generation_value(generation)
             )?,
             Output::TerminalCaptured(TerminalCaptured {
                 terminal,
                 generation,
-                bytes,
+                transcript_bytes,
             }) => writeln!(
                 output,
                 "TerminalCaptured\t{}\t{}\t{}",
-                terminal.as_str(),
-                generation.clone().into_u64(),
-                HexBytes::new(bytes.as_slice())
+                Self::terminal_text(terminal),
+                Self::generation_value(generation),
+                HexBytes::new(Self::transcript_bytes(transcript_bytes))
             )?,
             Output::TerminalDetached(TerminalDetached {
                 terminal,
                 generation,
-                reason,
+                terminal_detachment_reason,
             }) => writeln!(
                 output,
-                "TerminalDetached\t{}\t{}\t{reason:?}",
-                terminal.as_str(),
-                generation.clone().into_u64()
+                "TerminalDetached\t{}\t{}\t{terminal_detachment_reason:?}",
+                Self::terminal_text(terminal),
+                Self::generation_value(generation)
             )?,
             Output::TerminalExited(exited) => writeln!(
                 output,
                 "TerminalExited\t{}\t{}\t{:?}",
-                exited.terminal.as_str(),
-                exited.generation.clone().into_u64(),
-                exited.status
+                Self::terminal_text(&exited.terminal),
+                Self::generation_value(&exited.generation),
+                exited.terminal_exit_status
             )?,
-            Output::TerminalRejected(TerminalRejected { terminal, reason }) => writeln!(
+            Output::TerminalRejected(TerminalRejected {
+                terminal,
+                terminal_rejection_reason,
+            }) => writeln!(
                 output,
-                "TerminalRejected\t{}\t{reason:?}",
-                terminal.as_str()
+                "TerminalRejected\t{}\t{terminal_rejection_reason:?}",
+                Self::terminal_text(terminal)
             )?,
             Output::PromptPatternRegistered(PromptPatternRegistered {
                 terminal,
-                pattern_id,
+                pattern_identifier,
             }) => writeln!(
                 output,
                 "PromptPatternRegistered\t{}\t{}",
-                terminal.as_str(),
-                pattern_id.as_str()
+                Self::terminal_text(terminal),
+                Self::pattern_identifier_text(pattern_identifier)
             )?,
             Output::PromptPatternUnregistered(PromptPatternUnregistered {
                 terminal,
-                pattern_id,
+                pattern_identifier,
             }) => writeln!(
                 output,
                 "PromptPatternUnregistered\t{}\t{}",
-                terminal.as_str(),
-                pattern_id.as_str()
+                Self::terminal_text(terminal),
+                Self::pattern_identifier_text(pattern_identifier)
             )?,
             Output::PromptPatternList(PromptPatternList { terminal, entries }) => writeln!(
                 output,
                 "PromptPatternList\t{}\t{}",
-                terminal.as_str(),
-                entries.len()
+                Self::terminal_text(terminal),
+                Self::entries_len(entries)
             )?,
             Output::GateAcquired(GateAcquired {
                 terminal,
@@ -509,8 +528,8 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "GateAcquired\t{}\t{}\t{}",
-                terminal.as_str(),
-                lease.payload().clone().into_u64(),
+                Self::terminal_text(terminal),
+                Self::lease_value(lease),
                 PromptStateText::new(prompt_state)
             )?,
             Output::GateBusy(GateBusy {
@@ -519,8 +538,8 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "GateBusy\t{}\t{}",
-                terminal.as_str(),
-                current_holder.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::current_holder_value(current_holder)
             )?,
             Output::GateReleased(GateReleased {
                 terminal,
@@ -529,9 +548,9 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "GateReleased\t{}\t{}\t{}",
-                terminal.as_str(),
-                lease.payload().clone().into_u64(),
-                cached_human_bytes.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::lease_value(lease),
+                Self::cached_human_bytes_value(cached_human_bytes)
             )?,
             Output::InjectionAck(InjectionAck {
                 terminal,
@@ -540,14 +559,17 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "InjectionAck\t{}\t{}\t{}",
-                terminal.as_str(),
-                generation.clone().into_u64(),
-                sequence.clone().into_u64()
+                Self::terminal_text(terminal),
+                Self::generation_value(generation),
+                Self::sequence_value(sequence)
             )?,
-            Output::InjectionRejected(InjectionRejected { terminal, reason }) => writeln!(
+            Output::InjectionRejected(InjectionRejected {
+                terminal,
+                injection_rejection_reason,
+            }) => writeln!(
                 output,
-                "InjectionRejected\t{}\t{reason:?}",
-                terminal.as_str()
+                "InjectionRejected\t{}\t{injection_rejection_reason:?}",
+                Self::terminal_text(terminal)
             )?,
             Output::TerminalWorkerLifecycleSnapshot(TerminalWorkerLifecycleSnapshot {
                 terminal,
@@ -555,27 +577,29 @@ impl TerminalEventLine {
             }) => writeln!(
                 output,
                 "TerminalWorkerLifecycleSnapshot\t{}\t{}",
-                terminal.as_str(),
-                observations.len()
+                Self::terminal_text(terminal),
+                Self::observations_len(observations)
             )?,
             Output::SubscriptionRetracted(retracted) => writeln!(
                 output,
                 "SubscriptionRetracted\t{}",
-                retracted.payload().payload().as_str()
+                Self::terminal_text(retracted.payload().payload().payload())
             )?, // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
             // belongs to the streaming TerminalEvent enum — it arrives
             // via StreamingFrameBody::SubscriptionEvent, not as a
             // reply. The CLI's reply-reading path no longer receives
             // it; a separate subscription-event reader handles those.
-            Output::SessionList(list) => writeln!(output, "SessionList\t{}", list.payload().len())?,
+            Output::SessionList(list) => {
+                writeln!(output, "SessionList\t{}", list.payload().payload().len())?
+            }
             Output::SessionResolved(SessionResolved {
                 name,
                 data_socket_path,
             }) => writeln!(
                 output,
                 "SessionResolved\t{}\t{}",
-                name.as_str(),
-                data_socket_path.as_str()
+                Self::name_text(name),
+                Self::data_socket_path_text(data_socket_path)
             )?,
             // Per /176 §1 + /177 §3, a streaming TerminalEvent rides the
             // SubscriptionEvent frame path, not the direct-reply path; the
@@ -584,6 +608,62 @@ impl TerminalEventLine {
             Output::Event(event) => writeln!(output, "Event\t{event:?}")?,
         }
         Ok(())
+    }
+
+    fn terminal_text(terminal: &Terminal) -> &str {
+        terminal.payload().payload().as_str()
+    }
+
+    fn generation_value(generation: &Generation) -> u64 {
+        *generation.payload().payload()
+    }
+
+    fn sequence_value(sequence: &Sequence) -> u64 {
+        *sequence.payload().payload()
+    }
+
+    fn rows_value(rows: &Rows) -> u64 {
+        *rows.payload().payload()
+    }
+
+    fn columns_value(columns: &Columns) -> u64 {
+        *columns.payload().payload()
+    }
+
+    fn transcript_bytes(transcript_bytes: &TranscriptBytes) -> &[u64] {
+        transcript_bytes.payload().payload().as_slice()
+    }
+
+    fn pattern_identifier_text(pattern_identifier: &PatternIdentifier) -> &str {
+        pattern_identifier.payload().payload().as_str()
+    }
+
+    fn entries_len(entries: &signal_terminal::Entries) -> usize {
+        entries.payload().len()
+    }
+
+    fn lease_value(lease: &Lease) -> u64 {
+        *lease.payload().payload().payload()
+    }
+
+    fn current_holder_value(current_holder: &CurrentHolder) -> u64 {
+        *current_holder.payload().payload()
+    }
+
+    fn cached_human_bytes_value(cached_human_bytes: &CachedHumanBytes) -> u64 {
+        *cached_human_bytes.payload().payload()
+    }
+
+    fn observations_len(observations: &Observations) -> usize {
+        observations.payload().len()
+    }
+
+    fn name_text(name: &Name) -> &str {
+        name.payload().payload().as_str()
+    }
+
+    fn data_socket_path_text(data_socket_path: &DataSocketPath) -> &str {
+        data_socket_path.payload().payload().as_str()
     }
 }
 

@@ -41,14 +41,16 @@ impl TerminalSupervisorDaemon {
     pub fn from_configuration(configuration: TerminalDaemonConfiguration) -> Self {
         let supervision = SupervisionListener::new(
             SupervisionProfile::terminal(),
-            PathBuf::from(configuration.supervision_socket_path.as_str()),
-            SupervisionSocketMode::from_octal(configuration.supervision_socket_mode.into_u32()),
+            PathBuf::from(configuration.supervision_socket_path.payload().as_ref()),
+            SupervisionSocketMode::from_octal(
+                *configuration.supervision_socket_mode.payload().payload() as u32,
+            ),
         );
         Self {
-            socket: PathBuf::from(configuration.terminal_socket_path.as_str()),
-            store: StoreLocation::new(configuration.store_path.as_str()),
+            socket: PathBuf::from(configuration.terminal_socket_path.payload().as_ref()),
+            store: StoreLocation::new(configuration.store_path.payload().as_ref()),
             socket_mode: Some(SocketMode::from_octal(
-                configuration.terminal_socket_mode.into_u32(),
+                *configuration.terminal_socket_mode.payload().payload() as u32,
             )),
             supervision: Some(supervision),
         }
@@ -518,8 +520,8 @@ impl TerminalSupervisor {
         ))?;
         let Some(session) = tables.session(&terminal)? else {
             let event: Output = TerminalRejected {
-                terminal,
-                reason: TerminalRejectionReason::NotConnected,
+                terminal: terminal.into(),
+                terminal_rejection_reason: TerminalRejectionReason::NotConnected,
             }
             .into();
             self.record_terminal_event(&tables, event.clone())?;
@@ -540,30 +542,32 @@ impl TerminalSupervisor {
             .sessions()?
             .into_iter()
             .map(|session| SessionEntry {
-                name: session.terminal().clone(),
+                name: session.terminal().clone().into(),
                 data_socket_path: signal_terminal::WirePath::new(
                     session.data_socket_path().as_str().to_string(),
-                ),
+                )
+                .into(),
             })
-            .collect();
-        Ok(SessionList::new(entries).into())
+            .collect::<Vec<_>>();
+        Ok(SessionList::new(entries.into()).into())
     }
 
     fn resolve_session(&self, resolve: ResolveSession) -> Result<Output> {
         let tables = TerminalTables::open(&self.store)?;
-        let terminal = resolve.into_payload();
+        let terminal = resolve.into_payload().into_payload();
         let Some(session) = tables.session(&terminal)? else {
             return Ok(TerminalRejected {
-                terminal,
-                reason: TerminalRejectionReason::NotConnected,
+                terminal: terminal.into(),
+                terminal_rejection_reason: TerminalRejectionReason::NotConnected,
             }
             .into());
         };
         Ok(SessionResolved {
-            name: session.terminal().clone(),
+            name: session.terminal().clone().into(),
             data_socket_path: signal_terminal::WirePath::new(
                 session.data_socket_path().as_str().to_string(),
-            ),
+            )
+            .into(),
         }
         .into())
     }
@@ -573,7 +577,7 @@ impl TerminalSupervisor {
         sequence: u64,
         subscription: SubscribeTerminalWorkerLifecycle,
     ) -> Result<TerminalSupervisorSubscriptionStart> {
-        let terminal = subscription.payload().clone();
+        let terminal = subscription.payload().payload().clone();
         let tables = TerminalTables::open(&self.store)?;
         tables.put_delivery_attempt(&TerminalDeliveryAttemptObservation::started(
             TerminalObservationSequence::new(sequence),
@@ -582,8 +586,8 @@ impl TerminalSupervisor {
         ))?;
         let Some(session) = tables.session(&terminal)? else {
             let event: Output = TerminalRejected {
-                terminal,
-                reason: TerminalRejectionReason::NotConnected,
+                terminal: terminal.into(),
+                terminal_rejection_reason: TerminalRejectionReason::NotConnected,
             }
             .into();
             self.record_terminal_event(&tables, event.clone())?;
@@ -818,20 +822,22 @@ struct TerminalRequestTerminal {
 impl TerminalRequestTerminal {
     fn from_request(request: &Input) -> Result<Self> {
         let terminal = match request {
-            Input::TerminalConnection(payload) => payload.payload().clone(),
-            Input::TerminalInput(payload) => payload.terminal.clone(),
-            Input::TerminalResize(payload) => payload.terminal.clone(),
-            Input::TerminalDetachment(payload) => payload.terminal.clone(),
-            Input::TerminalCapture(payload) => payload.payload().clone(),
-            Input::RegisterPromptPattern(payload) => payload.terminal.clone(),
-            Input::UnregisterPromptPattern(payload) => payload.terminal.clone(),
-            Input::ListPromptPatterns(payload) => payload.payload().clone(),
-            Input::AcquireInputGate(payload) => payload.terminal.clone(),
-            Input::ReleaseInputGate(payload) => payload.terminal.clone(),
-            Input::WriteInjection(payload) => payload.terminal.clone(),
-            Input::SubscribeTerminalWorkerLifecycle(payload) => payload.payload().clone(),
-            Input::TerminalWorkerLifecycleRetraction(payload) => payload.payload().clone(),
-            Input::ResolveSession(payload) => payload.payload().clone(),
+            Input::TerminalConnection(payload) => payload.payload().payload().clone(),
+            Input::TerminalInput(payload) => payload.terminal.payload().clone(),
+            Input::TerminalResize(payload) => payload.terminal.payload().clone(),
+            Input::TerminalDetachment(payload) => payload.terminal.payload().clone(),
+            Input::TerminalCapture(payload) => payload.payload().payload().clone(),
+            Input::RegisterPromptPattern(payload) => payload.terminal.payload().clone(),
+            Input::UnregisterPromptPattern(payload) => payload.terminal.payload().clone(),
+            Input::ListPromptPatterns(payload) => payload.payload().payload().clone(),
+            Input::AcquireInputGate(payload) => payload.terminal.payload().clone(),
+            Input::ReleaseInputGate(payload) => payload.terminal.payload().clone(),
+            Input::WriteInjection(payload) => payload.terminal.payload().clone(),
+            Input::SubscribeTerminalWorkerLifecycle(payload) => payload.payload().payload().clone(),
+            Input::TerminalWorkerLifecycleRetraction(payload) => {
+                payload.payload().payload().clone()
+            }
+            Input::ResolveSession(payload) => payload.payload().payload().clone(),
             Input::ListSessions(_) => {
                 return Err(Error::InvalidArgument {
                     detail: "ListSessions is a registry query and has no terminal identity"
@@ -844,25 +850,27 @@ impl TerminalRequestTerminal {
 
     fn from_event(event: &Output) -> Option<Self> {
         let terminal = match event {
-            Output::TerminalReady(payload) => payload.terminal.clone(),
-            Output::TerminalInputAccepted(payload) => payload.terminal.clone(),
-            Output::TranscriptDelta(payload) => payload.terminal.clone(),
-            Output::TerminalResized(payload) => payload.terminal.clone(),
-            Output::TerminalCaptured(payload) => payload.terminal.clone(),
-            Output::TerminalDetached(payload) => payload.terminal.clone(),
-            Output::TerminalExited(payload) => payload.terminal.clone(),
-            Output::TerminalRejected(payload) => payload.terminal.clone(),
-            Output::PromptPatternRegistered(payload) => payload.terminal.clone(),
-            Output::PromptPatternUnregistered(payload) => payload.terminal.clone(),
-            Output::PromptPatternList(payload) => payload.terminal.clone(),
-            Output::GateAcquired(payload) => payload.terminal.clone(),
-            Output::GateBusy(payload) => payload.terminal.clone(),
-            Output::GateReleased(payload) => payload.terminal.clone(),
-            Output::InjectionAck(payload) => payload.terminal.clone(),
-            Output::InjectionRejected(payload) => payload.terminal.clone(),
-            Output::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.clone(),
-            Output::SubscriptionRetracted(payload) => payload.payload().payload().clone(),
-            Output::SessionResolved(payload) => payload.name.clone(),
+            Output::TerminalReady(payload) => payload.terminal.payload().clone(),
+            Output::TerminalInputAccepted(payload) => payload.terminal.payload().clone(),
+            Output::TranscriptDelta(payload) => payload.terminal.payload().clone(),
+            Output::TerminalResized(payload) => payload.terminal.payload().clone(),
+            Output::TerminalCaptured(payload) => payload.terminal.payload().clone(),
+            Output::TerminalDetached(payload) => payload.terminal.payload().clone(),
+            Output::TerminalExited(payload) => payload.terminal.payload().clone(),
+            Output::TerminalRejected(payload) => payload.terminal.payload().clone(),
+            Output::PromptPatternRegistered(payload) => payload.terminal.payload().clone(),
+            Output::PromptPatternUnregistered(payload) => payload.terminal.payload().clone(),
+            Output::PromptPatternList(payload) => payload.terminal.payload().clone(),
+            Output::GateAcquired(payload) => payload.terminal.payload().clone(),
+            Output::GateBusy(payload) => payload.terminal.payload().clone(),
+            Output::GateReleased(payload) => payload.terminal.payload().clone(),
+            Output::InjectionAck(payload) => payload.terminal.payload().clone(),
+            Output::InjectionRejected(payload) => payload.terminal.payload().clone(),
+            Output::TerminalWorkerLifecycleSnapshot(payload) => payload.terminal.payload().clone(),
+            Output::SubscriptionRetracted(payload) => {
+                payload.payload().payload().payload().payload().clone()
+            }
+            Output::SessionResolved(payload) => payload.name.payload().clone(),
             Output::SessionList(_) => return None,
             // TerminalWorkerLifecycleEvent now belongs to TerminalEvent
             // (the streaming-event payload); routed via

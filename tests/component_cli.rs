@@ -52,23 +52,23 @@ fn terminal_cli_reaches_working_socket_and_prints_typed_reply() {
         let (exchange, request) = TerminalCliServer::read_request(&mut stream);
         assert_eq!(
             request,
-            Input::TerminalConnection(TerminalConnection::new(TerminalName::new(
-                "operator".to_string()
-            )))
+            Input::TerminalConnection(TerminalConnection::new(
+                TerminalName::new("operator".to_string()).into()
+            ))
         );
         TerminalCliServer::write_reply(
             &mut stream,
             exchange,
             Output::TerminalReady(signal_terminal::TerminalReady {
-                terminal: TerminalName::new("operator".to_string()),
-                generation: signal_terminal::TerminalGeneration::new(1),
+                terminal: TerminalName::new("operator".to_string()).into(),
+                generation: signal_terminal::TerminalGeneration::new(1).into(),
             }),
         );
     });
 
-    let request = Input::TerminalConnection(TerminalConnection::new(TerminalName::new(
-        "operator".to_string(),
-    )))
+    let request = Input::TerminalConnection(TerminalConnection::new(
+        TerminalName::new("operator".to_string()).into(),
+    ))
     .to_string();
     let output = Command::new(env!("CARGO_BIN_EXE_terminal"))
         .env("TERMINAL_SOCKET", fixture.socket())

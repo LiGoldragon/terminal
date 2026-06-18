@@ -32,10 +32,10 @@ pub enum ConfigurationError {
 impl Configuration {
     pub fn from_raw(raw: TerminalDaemonConfiguration) -> Self {
         Self {
-            socket_path: PathBuf::from(raw.terminal_socket_path.as_str()),
-            meta_socket_path: PathBuf::from(raw.meta_terminal_socket_path.as_str()),
-            supervision_socket_path: PathBuf::from(raw.supervision_socket_path.as_str()),
-            database_path: PathBuf::from(raw.store_path.as_str()),
+            socket_path: PathBuf::from(raw.terminal_socket_path.payload().as_ref()),
+            meta_socket_path: PathBuf::from(raw.meta_terminal_socket_path.payload().as_ref()),
+            supervision_socket_path: PathBuf::from(raw.supervision_socket_path.payload().as_ref()),
+            database_path: PathBuf::from(raw.store_path.payload().as_ref()),
             raw,
         }
     }
@@ -65,7 +65,9 @@ impl Configuration {
         SupervisionListener::new(
             SupervisionProfile::terminal(),
             self.supervision_socket_path.clone(),
-            SupervisionSocketMode::from_octal(self.raw.supervision_socket_mode.clone().into_u32()),
+            SupervisionSocketMode::from_octal(
+                *self.raw.supervision_socket_mode.payload().payload() as u32,
+            ),
         )
     }
 }
@@ -77,7 +79,7 @@ impl BindingSurface for Configuration {
 
     fn socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            self.raw.terminal_socket_mode.clone().into_u32(),
+            *self.raw.terminal_socket_mode.payload().payload() as u32,
         ))
     }
 
@@ -95,7 +97,7 @@ impl BindingSurface for Configuration {
 
     fn meta_socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            self.raw.meta_terminal_socket_mode.clone().into_u32(),
+            *self.raw.meta_terminal_socket_mode.payload().payload() as u32,
         ))
     }
 }

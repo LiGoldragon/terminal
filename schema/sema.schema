@@ -27,8 +27,8 @@
 
   ListSessionsMarker { }
   CommitSequence Integer
-  CommitReceipt { CommitSequence * }
-  SessionRecordsRead { CommitSequence * }
+  CommitReceipt { CommitSequence }
+  SessionRecordsRead { CommitSequence }
   SessionRecordResolved SessionRecord
   TranscriptRead TranscriptCapture
 }

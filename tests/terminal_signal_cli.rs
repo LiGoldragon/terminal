@@ -77,15 +77,15 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
             .expect("client writes signal request");
         assert_eq!(
             request,
-            TerminalConnection::new(TerminalName::new("operator".to_string())).into()
+            TerminalConnection::new(TerminalName::new("operator".to_string()).into()).into()
         );
         let stream: &mut UnixStream = stream.get_mut();
         codec
             .write_event(
                 stream,
                 Output::from(TerminalReady {
-                    terminal: TerminalName::new("operator".to_string()),
-                    generation: signal_terminal::TerminalGeneration::new(1),
+                    terminal: TerminalName::new("operator".to_string()).into(),
+                    generation: signal_terminal::TerminalGeneration::new(1).into(),
                 }),
             )
             .expect("server writes signal event");

@@ -1,8 +1,8 @@
 use signal_terminal::{
-    Input, Output, TerminalConnection, TerminalDetached, TerminalDetachment,
+    Input, InputBytes, Output, TerminalConnection, TerminalDetached, TerminalDetachment,
     TerminalDetachmentReason, TerminalGeneration, TerminalInput, TerminalInputAccepted,
     TerminalInputBytes, TerminalName, TerminalRejected, TerminalRejectionReason, TerminalSequence,
-    TranscriptDelta,
+    TerminalTranscriptBytes, TranscriptBytes, TranscriptDelta,
 };
 use std::os::unix::net::UnixListener;
 use std::thread;
@@ -37,7 +37,7 @@ fn terminal_contract_connection_returns_ready_event() {
     let mut binding = binding();
     let event = binding
         .handle_request(Input::TerminalConnection(TerminalConnection::new(
-            terminal_name(),
+            terminal_name().into(),
         )))
         .expect("connection does not touch the socket");
 
@@ -50,16 +50,16 @@ fn terminal_contract_rejects_other_terminal_before_socket_io() {
     let other_terminal = TerminalName::new("designer".to_string());
     let event = binding
         .handle_request(Input::TerminalInput(TerminalInput {
-            terminal: other_terminal.clone(),
-            bytes: TerminalInputBytes::new(signal_bytes(b"ignored")),
+            terminal: other_terminal.clone().into(),
+            input_bytes: InputBytes::new(TerminalInputBytes::new(signal_bytes(b"ignored"))),
         }))
         .expect("terminal mismatch is local");
 
     assert_eq!(
         event,
         Output::TerminalRejected(TerminalRejected {
-            terminal: other_terminal,
-            reason: TerminalRejectionReason::NotConnected,
+            terminal: other_terminal.into(),
+            terminal_rejection_reason: TerminalRejectionReason::NotConnected,
         })
     );
 }
@@ -78,9 +78,9 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
             .expect("binding writes a Signal request frame");
         match request {
             Input::TerminalInput(input) => {
-                assert_eq!(input.terminal, server_terminal);
+                assert_eq!(input.terminal, server_terminal.into());
                 assert_eq!(
-                    input.bytes.as_slice(),
+                    input.input_bytes.payload().payload().as_slice(),
                     signal_bytes(b"typed input").as_slice()
                 );
                 codec
@@ -88,7 +88,7 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
                         &mut stream,
                         Output::TerminalInputAccepted(TerminalInputAccepted {
                             terminal: input.terminal,
-                            generation: TerminalGeneration::new(1),
+                            generation: TerminalGeneration::new(1).into(),
                         }),
                     )
                     .expect("signal reply writes");
@@ -100,16 +100,16 @@ fn terminal_contract_input_uses_signal_frame_control_plane() {
     let mut binding = TerminalTransportBinding::from_socket_path(terminal_name(), &socket_path);
     let event = binding
         .handle_request(Input::TerminalInput(TerminalInput {
-            terminal: terminal_name(),
-            bytes: TerminalInputBytes::new(signal_bytes(b"typed input")),
+            terminal: terminal_name().into(),
+            input_bytes: TerminalInputBytes::new(signal_bytes(b"typed input")).into(),
         }))
         .expect("input request travels through Signal control plane");
 
     assert_eq!(
         event,
         Output::TerminalInputAccepted(TerminalInputAccepted {
-            terminal: terminal_name(),
-            generation: TerminalGeneration::new(1),
+            terminal: terminal_name().into(),
+            generation: TerminalGeneration::new(1).into(),
         })
     );
     server.join().expect("test signal server exits");
@@ -121,17 +121,17 @@ fn terminal_contract_detachment_is_typed_event() {
     let mut binding = binding();
     let event = binding
         .handle_request(Input::TerminalDetachment(TerminalDetachment {
-            terminal: terminal_name(),
-            reason: TerminalDetachmentReason::HarnessStopped,
+            terminal: terminal_name().into(),
+            terminal_detachment_reason: TerminalDetachmentReason::HarnessStopped,
         }))
         .expect("detachment acknowledgement does not touch the socket");
 
     assert_eq!(
         event,
         Output::TerminalDetached(TerminalDetached {
-            terminal: terminal_name(),
-            generation: binding.generation(),
-            reason: TerminalDetachmentReason::HarnessStopped,
+            terminal: terminal_name().into(),
+            generation: binding.generation().into(),
+            terminal_detachment_reason: TerminalDetachmentReason::HarnessStopped,
         })
     );
 }
@@ -145,17 +145,19 @@ fn terminal_contract_transcript_delta_increments_sequence() {
     assert_eq!(
         first,
         Output::TranscriptDelta(TranscriptDelta {
-            terminal: terminal_name(),
-            sequence: TerminalSequence::new(1),
-            bytes: signal_terminal::TerminalTranscriptBytes::new(signal_bytes(b"first")),
+            terminal: terminal_name().into(),
+            sequence: TerminalSequence::new(1).into(),
+            transcript_bytes: TranscriptBytes::new(TerminalTranscriptBytes::new(signal_bytes(
+                b"first",
+            ))),
         })
     );
     assert_eq!(
         second,
         Output::TranscriptDelta(TranscriptDelta {
-            terminal: terminal_name(),
-            sequence: TerminalSequence::new(2),
-            bytes: signal_terminal::TerminalTranscriptBytes::new(signal_bytes(b"second")),
+            terminal: terminal_name().into(),
+            sequence: TerminalSequence::new(2).into(),
+            transcript_bytes: TerminalTranscriptBytes::new(signal_bytes(b"second")).into(),
         })
     );
 }
