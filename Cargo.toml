@@ -63,7 +63,7 @@ path = "src/bin/terminal-supervisor.rs"
 
 [dependencies]
 crossterm    = "0.28"
-kameo        = { version = "0.20", default-features = false, features = ["tracing"] }
+kameo        = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["tracing"] }
 nota-next    = { git = "https://github.com/LiGoldragon/nota-next.git", branch = "main", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
@@ -89,3 +89,6 @@ schema-rust-next = { git = "https://github.com/LiGoldragon/schema-rust-next.git"
 [lints.rust]
 unused = "warn"
 dead_code = "warn"
+
+[patch.crates-io]
+kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main" }
