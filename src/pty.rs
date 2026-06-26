@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
+use std::net::Shutdown;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -26,7 +27,7 @@ use crate::error::{Error, Result};
 use crate::registry::SessionRegistration;
 use crate::signal_control::{TerminalSignalControl, TerminalSignalControlRequest};
 use crate::socket::SocketMode;
-use crate::tables::StoreLocation;
+use crate::tables::{StoreLocation, TerminalTables};
 
 const DEFAULT_CONTROL_SOCKET: &str = "/tmp/terminal.control.sock";
 const DEFAULT_DATA_SOCKET: &str = "/tmp/terminal.data.sock";
@@ -740,17 +741,99 @@ impl TerminalDataConnection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewerRequest {
-    control_socket: PathBuf,
-    data_socket: PathBuf,
+    target: ViewerTarget,
     mode: ViewMode,
     ready_file: Option<PathBuf>,
 }
 
 impl ViewerRequest {
-    pub fn from_environment() -> Self {
+    pub fn from_environment() -> Result<Self> {
+        ViewerArguments::from_environment().into_request()
+    }
+
+    pub fn run(self) -> Result<()> {
+        let sockets = self.target.resolve()?;
+        TerminalViewer::new(
+            sockets.control_socket,
+            sockets.data_socket,
+            self.mode,
+            self.ready_file,
+        )
+        .run()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ViewerTarget {
+    SocketPaths(ViewerSockets),
+    RegisteredSession(ViewerSessionLookup),
+}
+
+impl ViewerTarget {
+    fn resolve(self) -> Result<ViewerSockets> {
+        match self {
+            Self::SocketPaths(sockets) => Ok(sockets),
+            Self::RegisteredSession(lookup) => lookup.resolve(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ViewerSockets {
+    control_socket: PathBuf,
+    data_socket: PathBuf,
+}
+
+impl ViewerSockets {
+    fn new(control_socket: PathBuf, data_socket: PathBuf) -> Self {
+        Self {
+            control_socket,
+            data_socket,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ViewerSessionLookup {
+    store: StoreLocation,
+    terminal: terminal_signal::TerminalName,
+}
+
+impl ViewerSessionLookup {
+    fn new(store: StoreLocation, terminal: terminal_signal::TerminalName) -> Self {
+        Self { store, terminal }
+    }
+
+    fn resolve(self) -> Result<ViewerSockets> {
+        let Some(session) = TerminalTables::open(&self.store)?.session(&self.terminal)? else {
+            return Err(Error::UnknownTerminalSession {
+                terminal: self.terminal.as_str().to_string(),
+            });
+        };
+        Ok(ViewerSockets::new(
+            PathBuf::from(session.control_socket_path().as_str()),
+            PathBuf::from(session.data_socket_path().as_str()),
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ViewerArguments {
+    control_socket: Option<PathBuf>,
+    data_socket: Option<PathBuf>,
+    store: Option<StoreLocation>,
+    terminal: Option<terminal_signal::TerminalName>,
+    mode: ViewMode,
+    ready_file: Option<PathBuf>,
+}
+
+impl ViewerArguments {
+    fn from_environment() -> Self {
         let mut arguments = env::args().skip(1);
         let mut control_socket = None;
         let mut data_socket = None;
+        let mut store = None;
+        let mut terminal = None;
         let mut mode = ViewMode::Interactive;
         let mut ready_file = None;
 
@@ -758,6 +841,12 @@ impl ViewerRequest {
             match argument.as_str() {
                 "--control-socket" => control_socket = arguments.next().map(PathBuf::from),
                 "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
+                "--store" => store = arguments.next().map(StoreLocation::new),
+                "--terminal" | "--name" => {
+                    terminal = arguments
+                        .next()
+                        .map(|value| terminal_signal::TerminalName::new(value))
+                }
                 "--once" => mode = ViewMode::Snapshot,
                 "--ready-file" => ready_file = arguments.next().map(PathBuf::from),
                 _ => {}
@@ -765,23 +854,46 @@ impl ViewerRequest {
         }
 
         Self {
-            control_socket: control_socket
-                .unwrap_or_else(|| TerminalSocketDefaults::current().control_socket()),
-            data_socket: data_socket
-                .unwrap_or_else(|| TerminalSocketDefaults::current().data_socket()),
+            control_socket,
+            data_socket,
+            store,
+            terminal,
             mode,
             ready_file,
         }
     }
 
-    pub fn run(self) -> Result<()> {
-        TerminalViewer::new(
-            self.control_socket,
-            self.data_socket,
-            self.mode,
-            self.ready_file,
-        )
-        .run()
+    fn into_request(self) -> Result<ViewerRequest> {
+        let mode = self.mode;
+        let ready_file = self.ready_file.clone();
+        Ok(ViewerRequest {
+            target: self.into_target()?,
+            mode,
+            ready_file,
+        })
+    }
+
+    fn into_target(self) -> Result<ViewerTarget> {
+        let has_registry_target = self.store.is_some() || self.terminal.is_some();
+        if has_registry_target {
+            if self.control_socket.is_some() || self.data_socket.is_some() {
+                return Err(Error::InvalidArgument {
+                    detail: "terminal-viewer accepts either --store/--terminal or raw --control-socket/--data-socket, not both".to_string(),
+                });
+            }
+            return Ok(ViewerTarget::RegisteredSession(ViewerSessionLookup::new(
+                self.store.unwrap_or_else(StoreLocation::from_environment),
+                self.terminal
+                    .unwrap_or_else(|| terminal_signal::TerminalName::new("default".to_string())),
+            )));
+        }
+
+        Ok(ViewerTarget::SocketPaths(ViewerSockets::new(
+            self.control_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().control_socket()),
+            self.data_socket
+                .unwrap_or_else(|| TerminalSocketDefaults::current().data_socket()),
+        )))
     }
 }
 
@@ -848,8 +960,8 @@ impl TerminalViewer {
                 Ok(())
             })?;
 
-        let _raw_mode = TerminalRawMode::enter()?;
         let mut stdin = io::stdin();
+        let _raw_mode = TerminalRawMode::enter_for(&stdin)?;
         let mut buffer = [0_u8; 4096];
         loop {
             let count = stdin.read(&mut buffer)?;
@@ -858,6 +970,7 @@ impl TerminalViewer {
             }
             attach_stream.write_all(&buffer[..count])?;
         }
+        attach_stream.shutdown(Shutdown::Write)?;
 
         output.join().map_err(|_| Error::TerminalCell {
             detail: "terminal view output thread panicked".to_string(),
@@ -934,9 +1047,13 @@ struct TerminalRawMode {
 }
 
 impl TerminalRawMode {
-    fn enter() -> io::Result<Self> {
-        enable_raw_mode()?;
-        Ok(Self { enabled: true })
+    fn enter_for(input: &impl IsTerminal) -> io::Result<Self> {
+        if input.is_terminal() {
+            enable_raw_mode()?;
+            Ok(Self { enabled: true })
+        } else {
+            Ok(Self { enabled: false })
+        }
     }
 }
 

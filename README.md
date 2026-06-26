@@ -58,10 +58,17 @@ the socket path for one registered session. These are read-only inspection
 clients for testing and operations; effect-bearing input and capture still go
 through the terminal socket.
 
+`terminal-viewer --store <terminal.sema> --terminal <terminal>` resolves the
+named live session, attaches to that session's raw data socket, replays the
+current terminal transcript, and then streams live bytes. Closing the viewer
+does not close the child PTY. `--control-socket <path> --data-socket <path>`
+remains available for direct low-level attachment.
+
 `nix run .#test-named-session-registry` starts a named daemon, resolves the
 socket through the Sema-backed registry, sends input through the resolved
-socket, and captures the transcript artifact. It is a stateful host-PTY witness,
-so it is exposed as a flake app rather than a pure builder check.
+socket, attaches `terminal-viewer` through the named-session path, and captures
+the transcript artifact. It is a stateful host-PTY witness, so it is exposed as
+a flake app rather than a pure builder check.
 
 ## Signal contract witness
 
