@@ -30,6 +30,18 @@ Terminal-brand mux helpers are retired. In the archived design, viewer and
 compositor behavior lived behind the same `terminal` owner and did not become
 a repository boundary.
 
+Per archived intent `f8tb`, the canonical name for this dedicated
+program-agnostic session-control component is **terminal-control**, with
+contracts `signal-terminal-control` and `meta-signal-terminal-control`. It
+owns the terminal session surface: the durable name-to-socket session
+registry, the signal control-plane relay, the per-session prompt-pattern
+registry, and the session-observation Sema. It folds into neither `harness`
+(AI-only, which would orphan non-harness cells) nor `orchestrate` (which owns
+coordination, not delivery identity); `orchestrate` owns cell-instance
+lifecycle policy as an order plane. `terminal-cell` stays the abduco
+primitive and absorbs the input-gate writer and prompt-matcher that the
+archived design duplicated between the two.
+
 ## 0 · TL;DR
 
 This repo carries an archived Persona terminal communication-plane design. It
