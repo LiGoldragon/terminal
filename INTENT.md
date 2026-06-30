@@ -4,25 +4,27 @@
 from psyche statements and the applicable workspace constraints; not
 embellished. Maintenance: `primary/skills/repo-intent.md`.*
 
-`terminal` is the Persona-facing terminal session owner: named terminal
-sessions, the typed Signal communication surface, the viewer-adapter
-launch policy, and the component SEMA metadata around `terminal-cell`.
-It is the boundary component that transports terminal bytes without
-interpreting their meaning. Paired with the contract repos
-`signal-terminal` (ordinary terminal transport vocabulary) and
-`meta-signal-terminal` (terminal meta policy vocabulary).
+Current status: `terminal` is archived/inactive until further notice. V1
+harness work, including Claude/Codex tests, should use `terminal-cell`
+directly as the active terminal primitive.
 
-Terminal now carries the schema-derived triad substrate in-tree:
+The prior `terminal` design was the Persona-facing terminal session owner:
+named terminal sessions, the typed Signal communication surface, the
+viewer-adapter launch policy, and the component SEMA metadata around
+`terminal-cell`. That design is retained here as historical reference for a
+future reactivation decision, not as current implementation guidance.
+
+At archival time, `terminal` carried the schema-derived triad substrate in-tree:
 `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema`
 generate checked-in modules under `src/schema/` through `schema-rust-next`.
 Those generated nouns name the intended internal feature surface: session
 inspection/control at Signal, session lifecycle and terminal-cell effects at
 Nexus, and registry/prompt/lease/injection records at SEMA. The
-`terminal-supervisor` process shell now rides the generated async task-backed
+`terminal-supervisor` process shell rode the generated async task-backed
 daemon emitter: the generated listener runtime binds the ordinary working
 socket and terminal meta socket, while the component hook preserves the
 external `signal-terminal` plus `meta-signal-terminal` frame contracts and
-routes them into the existing supervisor actor. The remaining work is
+routes them into the existing supervisor actor. The remaining archived work was
 supervisor-to-`terminal-daemon` consolidation and full meta session lifecycle
 behavior, not socket-tier substrate. The transitional supervisor daemon
 starts from exactly one signal-encoded/rkyv
@@ -31,13 +33,14 @@ startup files.
 
 ## Repo-scope only
 
-This file carries daemon-side intent for `terminal`. Wire vocabulary
-stays in `signal-terminal/INTENT.md` and
-the terminal meta signal contract's `INTENT.md`. Workspace-shape intent
-stays in `primary/INTENT.md`. The low-level PTY primitive is
-`terminal-cell`.
+This file carries archived daemon-side intent for `terminal`. Wire
+vocabulary stays in `signal-terminal/INTENT.md` and the terminal meta signal
+contract's `INTENT.md`. Workspace-shape intent stays in `primary/INTENT.md`.
+The active low-level PTY primitive is `terminal-cell`.
 
-## Goals
+## Historical goals (inactive)
+
+These goals are not active work items while this repo is archived.
 
 - Own the Persona terminal **communication plane** — typed Signal
   sessions, prompt-pattern lifecycle, input-gate leasing, and
@@ -47,9 +50,12 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   component's `terminal.sema` database through `sema-engine`, not in
   registry JSON, text manifests, or viewer-specific state files.
 
-## Constraints
+## Historical constraints (inactive)
 
-- **Transport bytes, do not interpret semantics.** The terminal owner
+These constraints describe the archived owner design, not active V1 harness
+guidance.
+
+- **Transport bytes, do not interpret semantics.** The archived terminal owner
   carries raw terminal input to the child PTY without Persona-message
   parsing, shell parsing, slash-command parsing, or provider-quota
   interpretation. Quota and harness-prompt meaning belong in
@@ -77,8 +83,8 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   `terminal-capture`.
 - **State-bearing runtime is actors, not shared mutable state.**
   `TerminalSignalControl` is a Kameo actor owning prompt-pattern
-  registry, input-gate leases, and injection decisions; production
-  terminal-control state does not use shared `Arc<Mutex<_>>`.
+  registry, input-gate leases, and injection decisions; archived
+  terminal-control state did not use shared `Arc<Mutex<_>>`.
 - **Push, do not poll.** Readiness, transcript, resize, detach,
   capture, exit, and rejection are pushed events; subscriptions are
   streams closed by a typed retract, not by raw socket close.
@@ -89,15 +95,15 @@ stays in `primary/INTENT.md`. The low-level PTY primitive is
   prefix keys, application-level input grammar) are **retired**. Viewer
   and compositor behaviour stays adapter-local behind this same owner
   and must not become a repository boundary.
-- The standalone `terminal-cell-daemon` is a development/test harness,
-  not the production Persona runtime boundary; production consumes
-  `terminal-cell` as a library inside `terminal-daemon`.
+- Do not treat the archived `terminal` owner as the V1 harness terminal
+  path. `terminal-cell` is the active terminal primitive until a future
+  owner is explicitly reactivated.
 
 ## See also
 
 - `ARCHITECTURE.md` — communication/data split, prompt-pattern
   lifecycle, gate-and-acquire execution, registry tables, witnesses.
-- `../terminal-cell/INTENT.md` — the low-level PTY/transcript cell.
+- `../terminal-cell/INTENT.md` — the active low-level PTY/transcript cell.
 - `../signal-terminal/INTENT.md` — ordinary terminal transport contract.
 - terminal meta signal contract — meta-only session lifecycle.
 - `primary/skills/component-triad.md` — triad structure and wire layers.

@@ -5,19 +5,18 @@ orchestration protocol before editing this repository.
 
 ## Repo Role
 
-Terminal owns the terminal-harness control layer for Persona. It
-contains the library and binaries that spawn durable terminal cells, attach
-visible viewers, send input frames, resize harnesses, and keep terminal output
-available for later capture. `terminal-cell` is the low-level PTY/transcript
-primitive; this repo is the Persona-facing owner around it.
+Terminal is archived/inactive until further notice. Do not route V1 harness
+Claude/Codex tests through this repo; use `terminal-cell` directly as the
+active terminal primitive. The older Persona-facing owner design in this repo
+is reference material unless the psyche explicitly reactivates it.
 
 ## Boundaries
 
-This repo owns terminal transport, viewer attachment, and terminal session
+While archived, this repo owns no active runtime boundary. Its historical
+scope was terminal transport, viewer attachment, and terminal session
 metadata. It does not own Persona message records, authorization, agent
 identity, harness quota interpretation, or the Persona state reducer.
-Terminal-brand mux helpers are retired; the owner noun is `terminal`
-around `terminal-cell`.
+Terminal-brand mux helpers remain retired.
 
 ## Version Control
 

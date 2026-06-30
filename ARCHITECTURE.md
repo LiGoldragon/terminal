@@ -1,9 +1,16 @@
 # terminal — architecture
 
-*Persona-facing terminal session owner. One component daemon, one
+*Archived Persona-facing terminal session owner. One component daemon, one
 communication socket, one supervision socket, many internal terminal cells.*
 
-`terminal` owns the Persona-facing surface around named terminal
+Current status: `terminal` is archived/inactive until further notice. V1
+harness work, including Claude/Codex tests, should use `terminal-cell`
+directly as the active terminal primitive. The architecture below records the
+prior owner design for reference, not an active build target. Unless a section
+explicitly says current V1, present-tense statements below describe that
+archived design snapshot.
+
+Historically, `terminal` owned the Persona-facing surface around named terminal
 sessions: typed Signal communication, component SEMA registry, session
 metadata, viewer-adapter launch policy, and the internal terminal-cell actors
 that own child PTYs. The durable registry is opened through
@@ -13,23 +20,22 @@ for `signal-terminal` traffic and a **supervision socket** for engine
 lifecycle/readiness. Those two sockets are distinct; "control" is not used as
 the component-boundary contrast with supervision.
 
-`terminal-cell` is the low-level cell library: one child process group, one
-PTY, raw input ports, transcript replay, worker lifecycle observation, and one
-active viewer attachment. Production Persona consumes it as a library inside
-`terminal-daemon`. The standalone `terminal-cell-daemon` remains a
-development/test harness and local primitive, not the production Persona
-runtime boundary.
+`terminal-cell` is the active low-level terminal primitive: one child process
+group, one PTY, raw input ports, transcript replay, worker lifecycle
+observation, and one active viewer attachment. The archived design consumed it
+as a library inside `terminal-daemon`; current V1 harness work uses
+`terminal-cell` directly instead.
 
-Terminal-brand mux helpers are retired. Viewer and compositor behavior lives
-behind this same `terminal` owner and must not become a repository
-boundary.
+Terminal-brand mux helpers are retired. In the archived design, viewer and
+compositor behavior lived behind the same `terminal` owner and did not become
+a repository boundary.
 
 ## 0 · TL;DR
 
-This repo carries the Persona terminal communication plane. It does not
-understand Persona message semantics, routing policy, provider quota policy,
-slash-command meaning, or authorization, and it does not move raw viewer
-bytes.
+This repo carries an archived Persona terminal communication-plane design. It
+does not understand Persona message semantics, routing policy, provider quota
+policy, slash-command meaning, or authorization, and it does not move raw
+viewer bytes.
 
 ```mermaid
 flowchart LR
@@ -134,14 +140,14 @@ prototype's witness reads the transcript to verify the end-to-end path.
 The terminal cell owns the child process and PTY. Viewers are disposable
 clients. Closing a viewer does not kill the harness.
 
-The production `terminal` supervisor owns the registry around terminal
+In the archived design, the `terminal` supervisor owned the registry around terminal
 cells: named sessions, session health, socket paths, viewer attachments, and
 SEMA-backed durable terminal metadata. The low-level `terminal-cell` session
 owns one child process group and one PTY. The supervisor chooses and launches
 viewer adapters; the adapters draw windows and forward raw terminal bytes over
 the cell's `data.sock`.
 
-The current daemon writes a named session record into component SEMA through
+At archival time, the daemon wrote a named session record into component SEMA through
 `TerminalTables` after the terminal-cell sockets are bound. The
 `terminal-sessions` and
 `terminal-resolve` binaries are read-only inspection clients for that
@@ -160,7 +166,7 @@ renders the typed reply as NOTA.
 `signal-terminal` requests, sends them as length-prefixed Signal frames
 to a terminal communication socket, and renders the resulting terminal event.
 
-The target runtime ships one component daemon:
+The archived target runtime shipped one component daemon:
 
 `terminal-daemon` is the **component daemon**. It binds the component
 communication socket and supervision socket, owns component SEMA, starts
@@ -173,8 +179,8 @@ return the data-socket attachment path.
 The terminal meta signal `RetireSession` removes a session through the
 same component owner.
 
-The current implementation still contains transitional binaries whose behavior
-is being folded into that daemon:
+At archival time, the implementation still contained transitional binaries
+whose behavior was being folded into that daemon:
 
 - `terminal-daemon` currently owns one PTY and writes a
   `SessionRegistration` into component SEMA for tests.
@@ -224,13 +230,10 @@ This repo does not own:
 terminal contract. `terminal` is not a subcomponent of harness; the
 engine manager supervises both and pushes their peer socket paths at spawn.
 
-Production registry state lives in `terminal`'s component SEMA, not in
-viewer-specific files and not in `terminal-cell`. Runtime-directory metadata
-remains a convenience cache; the typed terminal registry is the durable source
-of truth. The table value record shapes for inspectable terminal state are
-owned by `signal-terminal`'s introspection module; this component owns the
-`sema-engine` table registrations, explicit record keys, write sequencing, and
-read consistency.
+In the archived design, registry state lived in `terminal`'s component SEMA,
+not in viewer-specific files and not in `terminal-cell`. Current V1 harness
+work uses `terminal-cell` runtime-directory metadata directly; a higher-level
+durable registry is inactive until a future owner is reactivated.
 
 ## 4 · Constraints
 
@@ -270,7 +273,7 @@ Each line is an obligation; each load-bearing constraint has a witness in §5.
 
 ### 4.3 · Component daemon and transitional binaries
 
-- `terminal-daemon` is the production component daemon. It binds a
+- `terminal-daemon` was the archived target component daemon. It binds a
   communication socket and a supervision socket, owns component SEMA, and
   owns all terminal session actors.
 - `terminal-supervisor` is transitional code being folded into the
