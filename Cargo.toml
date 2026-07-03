@@ -64,7 +64,7 @@ path = "src/bin/terminal-supervisor.rs"
 [dependencies]
 crossterm    = "0.28"
 kameo        = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["tracing"] }
-nota-next    = { git = "https://github.com/LiGoldragon/nota-next.git", branch = "main", optional = true }
+nota    = { git = "https://github.com/LiGoldragon/nota.git", branch = "main", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema-engine  = { git = "https://github.com/LiGoldragon/sema-engine.git", branch = "main" }
@@ -81,10 +81,10 @@ vt100        = "0.16"
 
 [features]
 default = []
-nota-text = ["dep:nota-next"]
+nota-text = ["dep:nota"]
 
 [build-dependencies]
-schema-rust-next = { git = "https://github.com/LiGoldragon/schema-rust-next.git", branch = "main" }
+schema-rust = { git = "https://github.com/LiGoldragon/schema-rust.git", branch = "main" }
 
 [lints.rust]
 unused = "warn"

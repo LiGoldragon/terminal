@@ -10,7 +10,7 @@ use meta_signal_terminal::{
     MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
     RetireSession, SessionRetired,
 };
-use nota_next::NotaEncode;
+use nota::NotaEncode;
 use signal_frame::{NonEmpty, Reply, SubReply};
 use signal_terminal::{Frame, FrameBody, Input, Output, TerminalConnection, TerminalName};
 use triad_runtime::{FrameBody as RuntimeFrameBody, LengthPrefixedCodec};

@@ -21,7 +21,7 @@ pub enum Error {
 
     #[cfg(feature = "nota-text")]
     #[error("nota decode: {0}")]
-    Nota(#[from] nota_next::NotaDecodeError),
+    Nota(#[from] nota::NotaDecodeError),
 
     #[error("actor call: {detail}")]
     ActorCall { detail: String },
