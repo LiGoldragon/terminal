@@ -422,7 +422,7 @@ dependencies = [
 [[package]]
 name = "meta-signal-terminal"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=drop-next#31cad8912ca7a26b0d4b2e3d1ad337a6d564ad02"
+source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?branch=drop-next#24625d8b88fd4f31d4d5762151df884ae74f5956"
 dependencies = [
  "nota",
  "rkyv",
@@ -767,7 +767,7 @@ dependencies = [
 [[package]]
 name = "schema-rust"
 version = "0.5.3"
-source = "git+https://github.com/LiGoldragon/schema-rust.git?branch=drop-next#7f746c020bfbb64d76de968214255f343b2e94a4"
+source = "git+https://github.com/LiGoldragon/schema-rust.git?branch=drop-next#af814e757cd84fb0b3b8cce9c0623f69b6d99b5c"
 dependencies = [
  "nota",
  "prettyplease",
@@ -979,7 +979,7 @@ dependencies = [
 [[package]]
 name = "signal-persona"
 version = "0.2.0"
-source = "git+https://github.com/LiGoldragon/signal-persona.git?branch=drop-next#9d03892ff8862a03156777b84502b2b142021f25"
+source = "git+https://github.com/LiGoldragon/signal-persona.git?branch=drop-next#97f630a0bad0ca368d9ced267d47e26b1729be15"
 dependencies = [
  "rkyv",
  "schema-rust",
@@ -998,7 +998,7 @@ dependencies = [
 [[package]]
 name = "signal-terminal"
 version = "0.2.2"
-source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=drop-next#729a04a9e396510c9e84cfc9a9366fbc1891e781"
+source = "git+https://github.com/LiGoldragon/signal-terminal.git?branch=drop-next#632c51f34a21886bcbb01137311c8be276e6402a"
 dependencies = [
  "nota",
  "rkyv",
@@ -1072,7 +1072,7 @@ dependencies = [
 [[package]]
 name = "terminal-cell"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=drop-next#a69fb26ca5bdf25f2a1b5a72bde6156a1690453d"
+source = "git+https://github.com/LiGoldragon/terminal-cell.git?branch=drop-next#4676a60673a580ecc8d28e938f3c46bfbf1f5927"
 dependencies = [
  "crossterm",
  "kameo",
