@@ -41,14 +41,14 @@ impl TerminalSupervisorDaemon {
     pub fn from_configuration(configuration: TerminalDaemonConfiguration) -> Self {
         let supervision = SupervisionListener::new(
             SupervisionProfile::terminal(),
-            PathBuf::from(configuration.supervision_socket_path.payload().as_ref()),
+            PathBuf::from(configuration.supervision_socket_path.payload().payload()),
             SupervisionSocketMode::from_octal(
                 *configuration.supervision_socket_mode.payload().payload() as u32,
             ),
         );
         Self {
-            socket: PathBuf::from(configuration.terminal_socket_path.payload().as_ref()),
-            store: StoreLocation::new(configuration.store_path.payload().as_ref()),
+            socket: PathBuf::from(configuration.terminal_socket_path.payload().payload()),
+            store: StoreLocation::new(configuration.store_path.payload().payload()),
             socket_mode: Some(SocketMode::from_octal(
                 *configuration.terminal_socket_mode.payload().payload() as u32,
             )),

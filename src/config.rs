@@ -32,10 +32,10 @@ pub enum ConfigurationError {
 impl Configuration {
     pub fn from_raw(raw: TerminalDaemonConfiguration) -> Self {
         Self {
-            socket_path: PathBuf::from(raw.terminal_socket_path.payload().as_ref()),
-            meta_socket_path: PathBuf::from(raw.meta_terminal_socket_path.payload().as_ref()),
-            supervision_socket_path: PathBuf::from(raw.supervision_socket_path.payload().as_ref()),
-            database_path: PathBuf::from(raw.store_path.payload().as_ref()),
+            socket_path: PathBuf::from(raw.terminal_socket_path.payload().payload()),
+            meta_socket_path: PathBuf::from(raw.meta_terminal_socket_path.payload().payload()),
+            supervision_socket_path: PathBuf::from(raw.supervision_socket_path.payload().payload()),
+            database_path: PathBuf::from(raw.store_path.payload().payload()),
             raw,
         }
     }

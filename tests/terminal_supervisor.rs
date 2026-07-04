@@ -601,7 +601,7 @@ fn terminal_supervisor_answers_component_supervision_relation() {
     assert!(matches!(
         codec.read_reply(&mut stream).expect("identity reply"),
         SupervisionReply::Identified(identity)
-            if identity.payload().component_name.as_ref() == "terminal"
+            if identity.payload().component_name.payload().as_str() == "terminal"
                 && identity.payload().component_kind == ComponentKind::Terminal
     ));
 
