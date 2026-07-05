@@ -80,7 +80,7 @@ socket ↔ terminal cell) is raw bytes.
 - component supervision socket;
 - checked-in generated triad modules under `src/schema/`, produced from
   `schema/signal.schema`, `schema/nexus.schema`, and `schema/sema.schema` by
-  `schema-rust-next`. This substrate exposes the future Signal/Nexus/SEMA nouns
+  `schema-rust`. This substrate exposes the future Signal/Nexus/SEMA nouns
   while live behavior still runs through the transitional supervisor until the
   adapter cutover. The generated daemon substrate has meta-listener support;
   terminal's remaining generated-daemon blocker is preserving the external
