@@ -118,7 +118,7 @@ communication surface.
 `terminal-daemon`. It owns `signal-engine-management::SpawnEnvelope` handling
 and the `signal-engine-management::Operation` answer surface. The daemon reads
 its typed configuration from one signal-encoded/rkyv file at startup, rejects
-inline NOTA and `.nota` startup files, binds its communication and supervision
+inline DOTOS and `.dotos` startup files, binds its communication and supervision
 sockets, starts its terminal session actors, and reports readiness only after
 those sockets and actors are available.
 
@@ -166,13 +166,13 @@ At archival time, the daemon wrote a named session record into component SEMA th
 Sema state; effect-bearing input, capture, attach, and resize clients still
 talk to the terminal socket.
 
-`terminal` is the ordinary component CLI. It accepts one NOTA
+`terminal` is the ordinary component CLI. It accepts one DOTOS
 `signal-terminal::Input`, sends a length-prefixed Signal frame to the
-component communication socket, and renders the typed reply as NOTA.
+component communication socket, and renders the typed reply as DOTOS.
 
-`meta-terminal` is the meta component CLI. It accepts one NOTA
+`meta-terminal` is the meta component CLI. It accepts one DOTOS
 `meta-signal-terminal` request, sends it to the terminal meta socket, and
-renders the typed reply as NOTA.
+renders the typed reply as DOTOS.
 
 `terminal-signal` is the legacy contract witness client. It constructs
 `signal-terminal` requests, sends them as length-prefixed Signal frames

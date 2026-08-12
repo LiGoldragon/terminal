@@ -1,4 +1,4 @@
-#![cfg(feature = "nota-text")]
+#![cfg(feature = "dotos-text")]
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -6,11 +6,11 @@ use std::process::Command;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use dotos::DotosEncode;
 use meta_signal_terminal::{
     MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
     RetireSession, SessionRetired,
 };
-use nota::NotaEncode;
 use signal_frame::{NonEmpty, Reply, SubReply};
 use signal_terminal::{Frame, FrameBody, Input, Output, TerminalConnection, TerminalName};
 use triad_runtime::{FrameBody as RuntimeFrameBody, LengthPrefixedCodec};
@@ -116,7 +116,7 @@ fn meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply() {
     let request = MetaTerminalRequest::RetireSession(RetireSession {
         name: TerminalName::new("operator".to_string()),
     })
-    .to_nota();
+    .to_dotos();
     let output = Command::new(env!("CARGO_BIN_EXE_meta-terminal"))
         .env("TERMINAL_META_SOCKET", fixture.socket())
         .arg(request)

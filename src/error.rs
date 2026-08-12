@@ -19,9 +19,9 @@ pub enum Error {
     #[error("daemon argument: {0}")]
     Argument(#[from] triad_runtime::ArgumentError),
 
-    #[cfg(feature = "nota-text")]
-    #[error("nota decode: {0}")]
-    Nota(#[from] nota::NotaDecodeError),
+    #[cfg(feature = "dotos-text")]
+    #[error("dotos decode: {0}")]
+    Dotos(#[from] dotos::DotosDecodeError),
 
     #[error("actor call: {detail}")]
     ActorCall { detail: String },
@@ -61,9 +61,9 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    #[cfg(feature = "nota-text")]
-    #[error("failed to read terminal NOTA input {path:?}: {source}")]
-    NotaFileRead {
+    #[cfg(feature = "dotos-text")]
+    #[error("failed to read terminal DOTOS input {path:?}: {source}")]
+    DotosFileRead {
         path: PathBuf,
         source: std::io::Error,
     },

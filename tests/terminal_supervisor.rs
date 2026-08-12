@@ -632,18 +632,18 @@ fn terminal_supervisor_answers_component_supervision_relation() {
 }
 
 #[test]
-fn terminal_supervisor_configuration_rejects_nota_arguments() {
-    let fixture = SupervisorFixture::new("reject-nota-configuration");
+fn terminal_supervisor_configuration_rejects_dotos_arguments() {
+    let fixture = SupervisorFixture::new("reject-dotos-configuration");
     fs::create_dir_all(&fixture.root).expect("fixture directory is created");
-    let nota_path = fixture.root.join("terminal-daemon.nota");
-    fs::write(&nota_path, "(TerminalDaemonConfiguration)").expect("write nota fixture");
+    let dotos_path = fixture.root.join("terminal-daemon.dotos");
+    fs::write(&dotos_path, "(TerminalDaemonConfiguration)").expect("write dotos fixture");
 
     let inline = TerminalSupervisorDaemonCommand::from_arguments(["(TerminalDaemonConfiguration)"])
         .configuration()
-        .expect_err("inline NOTA is rejected");
-    let file = TerminalSupervisorDaemonCommand::from_arguments([nota_path.display().to_string()])
+        .expect_err("inline DOTOS is rejected");
+    let file = TerminalSupervisorDaemonCommand::from_arguments([dotos_path.display().to_string()])
         .configuration()
-        .expect_err(".nota file is rejected");
+        .expect_err(".dotos file is rejected");
 
     assert!(matches!(inline, terminal::Error::Argument(_)));
     assert!(matches!(file, terminal::Error::Argument(_)));

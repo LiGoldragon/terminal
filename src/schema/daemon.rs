@@ -93,7 +93,7 @@ impl<Daemon: ComponentDaemon> DaemonCommand<Daemon> {
                 Daemon::load_configuration(file.as_path())
                     .map_err(DaemonError::Configuration)
             }
-            ComponentArgument::InlineNota(_) | ComponentArgument::NotaFile(_) => {
+            ComponentArgument::InlineDotos(_) | ComponentArgument::DotosFile(_) => {
                 Err(DaemonError::Argument(ArgumentError::ExpectedSignalFile))
             }
         }

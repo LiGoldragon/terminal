@@ -2,12 +2,12 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
-use nota::NotaSource;
+use dotos::DotosSource;
 use signal_frame::{ExchangeIdentifier, ExchangeLane, LaneSequence, Reply, SessionEpoch, SubReply};
 use signal_terminal::{Frame, FrameBody, Input, Output};
 use triad_runtime::{ComponentCommand, FrameBody as RuntimeFrameBody, LengthPrefixedCodec};
 
-use crate::cli_argument::NotaCommandText;
+use crate::cli_argument::DotosCommandText;
 use crate::{Error, Result};
 
 const DEFAULT_TERMINAL_SOCKET: &str = "/tmp/terminal.sock";
@@ -157,17 +157,17 @@ impl TerminalCommandEnvironment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalInputText {
-    text: NotaCommandText,
+    text: DotosCommandText,
 }
 
 impl TerminalInputText {
     fn from_command(command: ComponentCommand) -> Result<Self> {
         Ok(Self {
-            text: NotaCommandText::from_command(command)?,
+            text: DotosCommandText::from_command(command)?,
         })
     }
 
     fn into_input(self) -> Result<Input> {
-        Ok(NotaSource::new(self.text.as_str()).parse::<Input>()?)
+        Ok(DotosSource::new(self.text.as_str()).parse::<Input>()?)
     }
 }

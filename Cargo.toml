@@ -18,12 +18,12 @@ path = "src/bin/terminal-daemon.rs"
 [[bin]]
 name = "terminal"
 path = "src/bin/terminal.rs"
-required-features = ["nota-text"]
+required-features = ["dotos-text"]
 
 [[bin]]
 name = "meta-terminal"
 path = "src/bin/meta_terminal.rs"
-required-features = ["nota-text"]
+required-features = ["dotos-text"]
 
 [[bin]]
 name = "terminal-viewer"
@@ -64,15 +64,15 @@ path = "src/bin/terminal-supervisor.rs"
 [dependencies]
 crossterm    = "0.28"
 kameo        = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["tracing"] }
-nota    = { git = "https://github.com/LiGoldragon/nota.git", branch = "main", optional = true }
+dotos    = { git = "https://github.com/LiGoldragon/dotos.git", rev = "80c7b17f7ad3cf547d2624c6a243e5de5f85c9f3", optional = true }
 regex        = "1"
 rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema-engine  = { git = "https://github.com/LiGoldragon/sema-engine.git", branch = "main" }
-signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
+signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "ca72b2d1151f5b3df536295b2ba68f039536ec19" }
 signal-hook  = "0.3"
-meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", branch = "main" }
+meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", rev = "3a5f26f9c9a54ee6a14681a42c460b31bc5aa667" }
 signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git", branch = "main" }
-signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
+signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", rev = "c247cbfe07313696f9053ecfb201fdf9c46e456b" }
 terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
 thiserror    = "2"
 tokio        = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
@@ -81,10 +81,10 @@ vt100        = "0.16"
 
 [features]
 default = []
-nota-text = ["dep:nota"]
+dotos-text = ["dep:dotos"]
 
 [build-dependencies]
-schema-rust = { git = "https://github.com/LiGoldragon/schema-rust.git", branch = "main" }
+schema-rust = { git = "https://github.com/LiGoldragon/schema-rust.git", rev = "6179a7cf1394083244dd3f3e1d2709f9ec08f7db" }
 
 [lints.rust]
 unused = "warn"
@@ -92,3 +92,6 @@ dead_code = "warn"
 
 [patch.crates-io]
 kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main" }
+
+[patch."https://github.com/LiGoldragon/signal-terminal.git"]
+signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal", rev = "c247cbfe07313696f9053ecfb201fdf9c46e456b" }

@@ -38,7 +38,7 @@ impl TerminalSupervisorDaemonCommand {
             ComponentArgument::SignalFile(file) => {
                 TerminalDaemonConfigurationFile::from_signal_file(file).configuration()
             }
-            ComponentArgument::InlineNota(_) | ComponentArgument::NotaFile(_) => {
+            ComponentArgument::InlineDotos(_) | ComponentArgument::DotosFile(_) => {
                 Err(triad_runtime::ArgumentError::ExpectedSignalFile.into())
             }
         }

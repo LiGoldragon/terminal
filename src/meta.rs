@@ -2,14 +2,14 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
+use dotos::{DotosEncode, DotosSource};
 use meta_signal_terminal::{
     MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
 };
-use nota::{NotaEncode, NotaSource};
 use signal_frame::{ExchangeIdentifier, ExchangeLane, LaneSequence, Reply, SessionEpoch, SubReply};
 use triad_runtime::{ComponentCommand, FrameBody as RuntimeFrameBody, LengthPrefixedCodec};
 
-use crate::cli_argument::NotaCommandText;
+use crate::cli_argument::DotosCommandText;
 use crate::{Error, Result};
 
 const DEFAULT_META_TERMINAL_SOCKET: &str = "/tmp/meta-terminal.sock";
@@ -134,7 +134,7 @@ impl MetaTerminalCommandLine {
     pub fn run(self, mut output: impl Write) -> Result<()> {
         let request = MetaTerminalRequestText::from_command(self.command)?.into_request()?;
         let reply = MetaTerminalClient::new(self.environment.endpoint()).submit(request)?;
-        writeln!(output, "{}", reply.to_nota())?;
+        writeln!(output, "{}", reply.to_dotos())?;
         Ok(())
     }
 }
@@ -165,17 +165,17 @@ impl MetaTerminalCommandEnvironment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MetaTerminalRequestText {
-    text: NotaCommandText,
+    text: DotosCommandText,
 }
 
 impl MetaTerminalRequestText {
     fn from_command(command: ComponentCommand) -> Result<Self> {
         Ok(Self {
-            text: NotaCommandText::from_command(command)?,
+            text: DotosCommandText::from_command(command)?,
         })
     }
 
     fn into_request(self) -> Result<MetaTerminalRequest> {
-        Ok(NotaSource::new(self.text.as_str()).parse::<MetaTerminalRequest>()?)
+        Ok(DotosSource::new(self.text.as_str()).parse::<MetaTerminalRequest>()?)
     }
 }
