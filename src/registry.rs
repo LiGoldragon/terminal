@@ -1,10 +1,13 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use signal_terminal::{TerminalName, TerminalSessionHealthObservation, TerminalSessionObservation};
+use signal_terminal::TerminalName;
 
 use crate::Error;
 use crate::Result;
+use crate::records::{
+    TerminalSessionHealthObservation, TerminalSessionObservation, TerminalSessionState,
+};
 use crate::tables::{StoreLocation, TerminalTables};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +49,7 @@ impl SessionResolveRequest {
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
         if let Some(session) = TerminalTables::open(&self.store)?.session(&self.terminal)? {
-            writeln!(output, "{}", session.control_socket_path().as_str())?;
+            writeln!(output, "{}", session.control_socket_path())?;
         } else {
             return Err(Error::UnknownTerminalSession {
                 terminal: self.terminal.as_str().to_string(),
@@ -66,16 +69,24 @@ impl SessionLine {
         Self { session }
     }
 
+    fn state_label(state: TerminalSessionState) -> &'static str {
+        match state {
+            TerminalSessionState::Ready => "ready",
+            TerminalSessionState::Draining => "draining",
+            TerminalSessionState::Closed => "closed",
+        }
+    }
+
     fn write_to(&self, output: &mut impl Write) -> Result<()> {
         writeln!(
             output,
             "{}\t{}\t{}\t{}\t{}\t{}",
             self.session.terminal().as_str(),
-            self.session.control_socket_path().as_str(),
-            self.session.data_socket_path().as_str(),
-            self.session.state().as_str(),
-            self.session.generation().clone().into_u64(),
-            self.session.transcript_sequence().clone().into_u64()
+            self.session.control_socket_path(),
+            self.session.data_socket_path(),
+            Self::state_label(self.session.state()),
+            self.session.generation(),
+            self.session.transcript_sequence()
         )?;
         Ok(())
     }
@@ -98,11 +109,9 @@ impl SessionArguments {
                 "--terminal" | "--name" => {
                     terminal = arguments
                         .next()
-                        .map(|value| TerminalName::new(value.to_string_lossy().into_owned()))
+                        .map(|value| value.to_string_lossy().into_owned())
                 }
-                value if terminal.is_none() => {
-                    terminal = Some(TerminalName::new(value.to_string()))
-                }
+                value if terminal.is_none() => terminal = Some(value.to_string()),
                 _ => {}
             }
         }
@@ -120,11 +129,11 @@ impl SessionArguments {
     fn terminal(&self) -> TerminalName {
         self.terminal
             .clone()
-            .unwrap_or_else(|| TerminalName::new("default".to_string()))
+            .unwrap_or_else(|| "default".to_string())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionRegistration {
     store: StoreLocation,
     session: TerminalSessionObservation,

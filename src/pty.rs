@@ -32,7 +32,7 @@ use crate::tables::{StoreLocation, TerminalTables};
 const DEFAULT_CONTROL_SOCKET: &str = "/tmp/terminal.control.sock";
 const DEFAULT_DATA_SOCKET: &str = "/tmp/terminal.data.sock";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DaemonRequest {
     control_socket: PathBuf,
     data_socket: PathBuf,
@@ -174,9 +174,9 @@ impl DaemonArguments {
                 "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--store" => store = arguments.next().map(StoreLocation::new),
                 "--name" | "--terminal" => {
-                    terminal = arguments.next().map(|value| {
-                        signal_terminal::TerminalName::new(value.to_string_lossy().into_owned())
-                    })
+                    terminal = arguments
+                        .next()
+                        .map(|value| value.to_string_lossy().into_owned())
                 }
                 value => {
                     command.push(value.to_string());
@@ -523,7 +523,7 @@ impl TerminalControlConnection {
     }
 
     fn handle_signal_request(&mut self, request: SignalSocketRequest) -> io::Result<()> {
-        if let terminal_signal::Input::SubscribeTerminalWorkerLifecycle(subscription) =
+        if let terminal_signal::Query::SubscribeTerminalWorkerLifecycle(subscription) =
             request.payload()
         {
             return self.stream_signal_worker_lifecycle(subscription.clone());
@@ -542,9 +542,9 @@ impl TerminalControlConnection {
 
     fn stream_signal_worker_lifecycle(
         &mut self,
-        subscription: terminal_signal::SubscribeTerminalWorkerLifecycle,
+        subscription: terminal_signal::SubscribeTerminalWorkerLifecycleRequest,
     ) -> io::Result<()> {
-        let terminal_name = subscription.into_payload();
+        let terminal_name = subscription.terminal;
         let mut lifecycle = self
             .runtime
             .block_on(async {
@@ -554,32 +554,34 @@ impl TerminalControlConnection {
             })
             .map_err(Self::actor_error)?;
         SocketReplyWriter::new(&mut self.stream).write_signal_event(
-            terminal_signal::TerminalWorkerLifecycleSnapshot {
-                terminal: terminal_name.clone(),
-                observations: lifecycle
-                    .replay()
-                    .iter()
-                    .cloned()
-                    .map(TerminalSignalControl::worker_lifecycle)
-                    .collect::<Vec<_>>()
-                    .into(),
-            }
-            .into(),
+            terminal_signal::Response::TerminalWorkerLifecycleSnapshot(
+                terminal_signal::TerminalWorkerLifecycleSnapshotReply {
+                    terminal: terminal_name.clone(),
+                    observations: lifecycle
+                        .replay()
+                        .iter()
+                        .cloned()
+                        .map(TerminalSignalControl::worker_lifecycle)
+                        .collect::<Vec<_>>(),
+                },
+            ),
         )?;
 
         while let Some(event) = lifecycle.blocking_next_live_event() {
-            // Per /176 §1 + /177 §3, TerminalWorkerLifecycleEvent now
-            // belongs to the streaming TerminalEvent enum, not the
-            // direct-reply Output enum. terminal-cell exposes
-            // `write_signal_subscription_event` for this path; the
-            // terminal supervisor is a passthrough so it
-            // wraps the same way.
-            SocketReplyWriter::new(&mut self.stream).write_signal_subscription_event(
-                terminal_signal::TerminalWorkerLifecycleEvent {
-                    terminal: terminal_name.clone(),
-                    observation: TerminalSignalControl::worker_lifecycle(event).into(),
-                }
-                .into(),
+            // A streamed lifecycle event is an ordinary reply whose value
+            // is the contract's own event variant: `signal-terminal` 2.0.1
+            // carries `TerminalEvent` inside `Response`, so the supervisor
+            // passes it through on the same frame shape as every other
+            // reply.
+            SocketReplyWriter::new(&mut self.stream).write_signal_event(
+                terminal_signal::Response::Event(
+                    terminal_signal::TerminalEvent::TerminalWorkerLifecycleEvent(
+                        terminal_signal::TerminalWorkerLifecycleEventPayload {
+                            terminal: terminal_name.clone(),
+                            observation: TerminalSignalControl::worker_lifecycle(event),
+                        },
+                    ),
+                ),
             )?;
         }
         Ok(())
@@ -811,8 +813,8 @@ impl ViewerSessionLookup {
             });
         };
         Ok(ViewerSockets::new(
-            PathBuf::from(session.control_socket_path().as_str()),
-            PathBuf::from(session.data_socket_path().as_str()),
+            PathBuf::from(session.control_socket_path()),
+            PathBuf::from(session.data_socket_path()),
         ))
     }
 }
@@ -845,7 +847,7 @@ impl ViewerArguments {
                 "--terminal" | "--name" => {
                     terminal = arguments
                         .next()
-                        .map(|value| terminal_signal::TerminalName::new(value))
+                        .map(|value| value)
                 }
                 "--once" => mode = ViewMode::Snapshot,
                 "--ready-file" => ready_file = arguments.next().map(PathBuf::from),
@@ -884,7 +886,7 @@ impl ViewerArguments {
             return Ok(ViewerTarget::RegisteredSession(ViewerSessionLookup::new(
                 self.store.unwrap_or_else(StoreLocation::from_environment),
                 self.terminal
-                    .unwrap_or_else(|| terminal_signal::TerminalName::new("default".to_string())),
+                    .unwrap_or_else(|| "default".to_string()),
             )));
         }
 
@@ -1127,7 +1129,7 @@ impl TerminalSocket {
         Ok(TerminalSnapshot::from_bytes(self.client.capture()?))
     }
 
-    pub fn signal(&self, request: terminal_signal::Input) -> Result<terminal_signal::Output> {
+    pub fn signal(&self, request: terminal_signal::Query) -> Result<terminal_signal::Response> {
         Ok(self.client.send_signal_request(request)?)
     }
 }

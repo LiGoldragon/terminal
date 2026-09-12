@@ -1,0 +1,11 @@
+{}
+[ServeTerminal.TerminalPlane ServeMetaTerminal.MetaTerminalPlane]
+[TerminalServed.TerminalPlane MetaTerminalServed.MetaTerminalPlane]
+{
+  TerminalSocketPath.String
+  MetaTerminalSocketPath.String
+  TerminalPlane.{ TerminalSocketPath }
+  MetaTerminalPlane.{ MetaTerminalSocketPath }
+}
+{}
+{}

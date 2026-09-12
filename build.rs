@@ -23,19 +23,12 @@ impl SchemaBuild {
     }
 
     fn run(&self) {
-        println!("cargo:rerun-if-changed=schema/signal.schema");
-        println!("cargo:rerun-if-changed=src/schema/signal.rs");
-        println!("cargo:rerun-if-changed=schema/sema.schema");
-        println!("cargo:rerun-if-changed=src/schema/sema.rs");
-        println!("cargo:rerun-if-changed=schema/nexus.schema");
-        println!("cargo:rerun-if-changed=src/schema/nexus.rs");
+        println!("cargo:rerun-if-changed=schema/daemon.schema");
         println!("cargo:rerun-if-changed=src/schema/daemon.rs");
 
-        let plan = GenerationPlan::new(&self.crate_root, "terminal", "0.1.0")
-            .with_module(ModuleEmission::signal_runtime_module("signal"))
-            .with_module(ModuleEmission::sema_runtime())
-            .with_module(ModuleEmission::nexus_runtime())
-            .with_module(ModuleEmission::daemon_module("nexus", Self::daemon_shape()));
+        let plan = GenerationPlan::new(&self.crate_root, "terminal", "0.1.0").with_module(
+            ModuleEmission::daemon_module("daemon", Self::daemon_shape()),
+        );
         GenerationDriver::new(plan)
             .generate()
             .expect("generate terminal schema artifacts")
@@ -43,6 +36,10 @@ impl SchemaBuild {
             .expect("checked-in terminal schema artifacts are fresh");
     }
 
+    /// The ordinary communication socket carries `signal-terminal` Signal
+    /// frames the component decodes itself; the owner-only meta socket
+    /// carries `meta-signal-terminal`. Both are bound by the emitted
+    /// async listener runtime.
     fn daemon_shape() -> NexusDaemonShape {
         NexusDaemonShape::new(
             "terminal-supervisor",

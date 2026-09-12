@@ -1,11 +1,12 @@
 [package]
 name         = "terminal"
-version      = "0.2.0"
+version      = "0.3.0"
 edition      = "2024"
 rust-version = "1.89"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/terminal"
 description  = "Persona terminal session owner built around terminal-cell."
+publish      = false
 
 [lib]
 name = "terminal"
@@ -18,12 +19,10 @@ path = "src/bin/terminal-daemon.rs"
 [[bin]]
 name = "terminal"
 path = "src/bin/terminal.rs"
-required-features = ["nota-text"]
 
 [[bin]]
 name = "meta-terminal"
 path = "src/bin/meta_terminal.rs"
-required-features = ["nota-text"]
 
 [[bin]]
 name = "terminal-viewer"
@@ -62,33 +61,33 @@ name = "terminal-supervisor"
 path = "src/bin/terminal-supervisor.rs"
 
 [dependencies]
-crossterm    = "0.28"
-kameo        = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["tracing"] }
-nota    = { git = "https://github.com/LiGoldragon/nota.git", branch = "main", optional = true }
-regex        = "1"
-rkyv         = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
-sema-engine  = { git = "https://github.com/LiGoldragon/sema-engine.git", branch = "main" }
-signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
-signal-hook  = "0.3"
-meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", branch = "main" }
-signal-persona = { git = "https://github.com/LiGoldragon/signal-persona.git", branch = "main" }
-signal-terminal = { git = "https://github.com/LiGoldragon/signal-terminal.git", branch = "main" }
-terminal-cell = { git = "https://github.com/LiGoldragon/terminal-cell.git", branch = "main" }
-thiserror    = "2"
-tokio        = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
-triad-runtime = { git = "https://github.com/LiGoldragon/triad-runtime.git", branch = "main" }
-vt100        = "0.16"
+crossterm            = "0.28"
+datom-codec          = { git = "https://github.com/LiGoldragon/datom-codec", rev = "627db67f2655efd9f786864009955005fd8ab2ad" }
+kameo                = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01", default-features = false, features = ["tracing"] }
+meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", rev = "a9b18ee853a449709fd908bb4c2d16c8f7fd15ff", features = ["datom"] }
+protos               = { git = "https://github.com/LiGoldragon/protos", rev = "171b21f65337983ab624b7b906397a4f1f92c5a3" }
+regex                = "1"
+rkyv                 = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
+sema-engine          = { git = "https://github.com/LiGoldragon/sema-engine.git", rev = "27e814a721439af67721c530d48b4d2101141f74" }
+signal-hook          = "0.3"
+signal-persona       = { git = "https://github.com/LiGoldragon/signal-persona.git", rev = "48118557368f26b7292f6b0fb2f98df5cec29fc5", features = ["datom"] }
+signal-terminal      = { git = "https://github.com/LiGoldragon/signal-terminal.git", rev = "bb6963650cdd507c25b3650d85fd3bfc232f9a07", features = ["datom"] }
+terminal-cell        = { git = "https://github.com/LiGoldragon/terminal-cell.git", rev = "bd1defd9295d21104d6def5d0a2519eb1bbb558e" }
+thiserror            = "2"
+tokio                = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+triad-runtime        = { git = "https://github.com/LiGoldragon/triad-runtime.git", rev = "e44c07dbf31497af95eb461826bb9502115fbcfe" }
+vt100                = "0.16"
 
 [features]
 default = []
-nota-text = ["dep:nota"]
 
 [build-dependencies]
-schema-rust = { git = "https://github.com/LiGoldragon/schema-rust.git", branch = "main" }
+schema-rust = { git = "https://github.com/LiGoldragon/schema-rust.git", rev = "6179a7cf1394083244dd3f3e1d2709f9ec08f7db" }
 
 [lints.rust]
-unused = "warn"
-dead_code = "warn"
+unsafe_code = "forbid"
+unused      = { level = "warn", priority = -1 }
+dead_code   = "warn"
 
 [patch.crates-io]
-kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main" }
+kameo = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01" }

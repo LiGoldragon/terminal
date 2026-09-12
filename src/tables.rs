@@ -12,13 +12,14 @@ use sema_engine::{
     RecordKey, SchemaHash, SchemaVersion, TableDescriptor, TableName, TableReference,
     VersionedStoreName, VersioningPolicy,
 };
-use signal_terminal::{
-    TerminalDeliveryAttemptObservation, TerminalEventObservation, TerminalName,
+use signal_terminal::TerminalName;
+
+use crate::Result;
+use crate::records::{
+    TerminalDeliveryAttemptObservation, TerminalEventObservation,
     TerminalSessionArchiveObservation, TerminalSessionHealthObservation,
     TerminalSessionObservation, TerminalViewerAttachmentObservation,
 };
-
-use crate::Result;
 
 const TERMINAL_SCHEMA_VERSION: SchemaVersion = SchemaVersion::new(1);
 const SESSIONS: TableName = TableName::new("sessions");
@@ -154,7 +155,7 @@ impl TerminalTables {
     pub fn put_delivery_attempt(&self, attempt: &TerminalDeliveryAttemptObservation) -> Result<()> {
         self.put_record(
             self.delivery_attempts,
-            RecordKey::new(attempt.sequence().into_u64().to_string()),
+            RecordKey::new(attempt.sequence().to_string()),
             attempt,
         )
     }
@@ -166,7 +167,7 @@ impl TerminalTables {
     pub fn put_terminal_event(&self, event: &TerminalEventObservation) -> Result<()> {
         self.put_record(
             self.terminal_events,
-            RecordKey::new(event.sequence().into_u64().to_string()),
+            RecordKey::new(event.sequence().to_string()),
             event,
         )
     }
@@ -181,7 +182,7 @@ impl TerminalTables {
     ) -> Result<()> {
         self.put_record(
             self.viewer_attachments,
-            RecordKey::new(attachment.sequence().into_u64().to_string()),
+            RecordKey::new(attachment.sequence().to_string()),
             attachment,
         )
     }

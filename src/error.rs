@@ -10,18 +10,14 @@ pub enum Error {
     #[error("sema engine: {0}")]
     SemaEngine(#[from] sema_engine::Error),
 
-    #[error("signal frame: {0}")]
-    SignalFrame(#[from] signal_frame::FrameError),
-
     #[error("triad runtime frame: {0}")]
     TriadRuntimeFrame(#[from] triad_runtime::FrameError),
 
     #[error("daemon argument: {0}")]
     Argument(#[from] triad_runtime::ArgumentError),
 
-    #[cfg(feature = "nota-text")]
-    #[error("nota decode: {0}")]
-    Nota(#[from] nota::NotaDecodeError),
+    #[error("datom decode: {detail}")]
+    Datom { detail: String },
 
     #[error("actor call: {detail}")]
     ActorCall { detail: String },
@@ -37,11 +33,6 @@ pub enum Error {
 
     #[error("unexpected signal frame: {got}")]
     UnexpectedSignalFrame { got: String },
-
-    #[error("signal request failed structural checks: {reason}")]
-    InvalidSignalRequest {
-        reason: signal_frame::RequestRejectionReason,
-    },
 
     #[error("unknown terminal session: {terminal}")]
     UnknownTerminalSession { terminal: String },
@@ -61,9 +52,8 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    #[cfg(feature = "nota-text")]
-    #[error("failed to read terminal NOTA input {path:?}: {source}")]
-    NotaFileRead {
+    #[error("failed to read terminal Datom input {path:?}: {source}")]
+    DatomFileRead {
         path: PathBuf,
         source: std::io::Error,
     },
