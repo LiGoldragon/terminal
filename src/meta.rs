@@ -2,15 +2,11 @@ use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 
-use meta_signal_terminal::{
-    MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
-};
-use nota::{NotaEncode, NotaSource};
-use signal_frame::{ExchangeIdentifier, ExchangeLane, LaneSequence, Reply, SessionEpoch, SubReply};
-use triad_runtime::{ComponentCommand, FrameBody as RuntimeFrameBody, LengthPrefixedCodec};
+use meta_signal_terminal::{Query as MetaQuery, Response as MetaResponse};
+use triad_runtime::ComponentCommand;
 
-use crate::cli_argument::NotaCommandText;
-use crate::{Error, Result};
+use crate::cli_argument::DatomCommandText;
+use crate::{Result, datom_text, frame};
 
 const DEFAULT_META_TERMINAL_SOCKET: &str = "/tmp/meta-terminal.sock";
 
@@ -31,64 +27,21 @@ impl MetaTerminalEndpoint {
     }
 }
 
+/// One `meta-signal-terminal` exchange over the owner-only meta socket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetaTerminalClient {
     endpoint: MetaTerminalEndpoint,
-    codec: LengthPrefixedCodec,
 }
 
 impl MetaTerminalClient {
     pub fn new(endpoint: MetaTerminalEndpoint) -> Self {
-        Self {
-            endpoint,
-            codec: LengthPrefixedCodec::default(),
-        }
+        Self { endpoint }
     }
 
-    pub fn submit(&self, request: MetaTerminalRequest) -> Result<MetaTerminalReply> {
-        let exchange = self.exchange();
-        let frame = MetaTerminalFrame::new(MetaTerminalFrameBody::Request {
-            exchange,
-            request: signal_frame::Request::from_payload(request),
-        });
+    pub fn submit(&self, query: MetaQuery) -> Result<MetaResponse> {
         let mut stream = UnixStream::connect(self.endpoint.as_path())?;
-        self.codec
-            .write_body(&mut stream, &RuntimeFrameBody::new(frame.encode()?))?;
-        let body = self.codec.read_body(&mut stream)?;
-        self.reply_from_frame(MetaTerminalFrame::decode(body.bytes())?)
-    }
-
-    fn exchange(&self) -> ExchangeIdentifier {
-        let _endpoint = &self.endpoint;
-        ExchangeIdentifier::new(
-            SessionEpoch::new(0),
-            ExchangeLane::Connector,
-            LaneSequence::first(),
-        )
-    }
-
-    fn reply_from_frame(&self, frame: MetaTerminalFrame) -> Result<MetaTerminalReply> {
-        match frame.into_body() {
-            MetaTerminalFrameBody::Reply { reply, .. } => self.reply_output(reply),
-            other => Err(Error::UnexpectedSignalFrame {
-                got: format!("{other:?}"),
-            }),
-        }
-    }
-
-    fn reply_output(&self, reply: Reply<MetaTerminalReply>) -> Result<MetaTerminalReply> {
-        let _endpoint = &self.endpoint;
-        match reply {
-            Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
-                SubReply::Ok(output) => Ok(output),
-                other => Err(Error::UnexpectedSignalFrame {
-                    got: format!("{other:?}"),
-                }),
-            },
-            Reply::Rejected { reason } => Err(Error::UnexpectedSignalFrame {
-                got: reason.to_string(),
-            }),
-        }
+        frame::meta::write_query(&mut stream, &query)?;
+        frame::meta::read_response(&mut stream)
     }
 }
 
@@ -132,9 +85,10 @@ impl MetaTerminalCommandLine {
     }
 
     pub fn run(self, mut output: impl Write) -> Result<()> {
-        let request = MetaTerminalRequestText::from_command(self.command)?.into_request()?;
-        let reply = MetaTerminalClient::new(self.environment.endpoint()).submit(request)?;
-        writeln!(output, "{}", reply.to_nota())?;
+        let text = DatomCommandText::from_command(self.command)?;
+        let query: MetaQuery = datom_text::actualize(text.as_str())?;
+        let reply = MetaTerminalClient::new(self.environment.endpoint()).submit(query)?;
+        writeln!(output, "{}", datom_text::textualize(&reply))?;
         Ok(())
     }
 }
@@ -160,22 +114,5 @@ impl MetaTerminalCommandEnvironment {
 
     pub fn endpoint(&self) -> MetaTerminalEndpoint {
         MetaTerminalEndpoint::new(&self.socket)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MetaTerminalRequestText {
-    text: NotaCommandText,
-}
-
-impl MetaTerminalRequestText {
-    fn from_command(command: ComponentCommand) -> Result<Self> {
-        Ok(Self {
-            text: NotaCommandText::from_command(command)?,
-        })
-    }
-
-    fn into_request(self) -> Result<MetaTerminalRequest> {
-        Ok(NotaSource::new(self.text.as_str()).parse::<MetaTerminalRequest>()?)
     }
 }

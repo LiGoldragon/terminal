@@ -21,9 +21,9 @@ impl DatomCommandText {
     }
 
     pub fn from_command(command: ComponentCommand) -> Result<Self> {
-        match command.nota_argument()? {
-            ComponentArgument::InlineNota(argument) => Ok(Self::new(argument.into_string())),
-            ComponentArgument::NotaFile(argument) => Self::from_path(argument.into_path()),
+        match command.dotos_argument()? {
+            ComponentArgument::InlineDotos(argument) => Ok(Self::new(argument.into_string())),
+            ComponentArgument::DotosFile(argument) => Self::from_path(argument.into_path()),
             other => Err(Error::InvalidArgument {
                 detail: format!("expected one Datom argument, got {other:?}"),
             }),

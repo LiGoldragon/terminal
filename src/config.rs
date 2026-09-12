@@ -8,7 +8,7 @@ use crate::{
     SupervisionListener, SupervisionProfile, SupervisionSocketMode, tables::StoreLocation,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Configuration {
     raw: TerminalDaemonConfiguration,
     socket_path: PathBuf,
@@ -32,10 +32,10 @@ pub enum ConfigurationError {
 impl Configuration {
     pub fn from_raw(raw: TerminalDaemonConfiguration) -> Self {
         Self {
-            socket_path: PathBuf::from(raw.terminal_socket_path.payload().payload()),
-            meta_socket_path: PathBuf::from(raw.meta_terminal_socket_path.payload().payload()),
-            supervision_socket_path: PathBuf::from(raw.supervision_socket_path.payload().payload()),
-            database_path: PathBuf::from(raw.store_path.payload().payload()),
+            socket_path: PathBuf::from(&raw.terminal_socket_path),
+            meta_socket_path: PathBuf::from(&raw.meta_terminal_socket_path),
+            supervision_socket_path: PathBuf::from(&raw.supervision_socket_path),
+            database_path: PathBuf::from(&raw.store_path),
             raw,
         }
     }
@@ -45,11 +45,10 @@ impl Configuration {
             path: path.to_path_buf(),
             source,
         })?;
-        let raw = TerminalDaemonConfiguration::from_rkyv_bytes(&bytes).map_err(|_| {
-            ConfigurationError::Decode {
+        let raw = rkyv::from_bytes::<TerminalDaemonConfiguration, rkyv::rancor::Error>(&bytes)
+            .map_err(|_| ConfigurationError::Decode {
                 path: path.to_path_buf(),
-            }
-        })?;
+            })?;
         Ok(Self::from_raw(raw))
     }
 
@@ -65,9 +64,7 @@ impl Configuration {
         SupervisionListener::new(
             SupervisionProfile::terminal(),
             self.supervision_socket_path.clone(),
-            SupervisionSocketMode::from_octal(
-                *self.raw.supervision_socket_mode.payload().payload() as u32,
-            ),
+            SupervisionSocketMode::from_octal(self.raw.supervision_socket_mode as u32),
         )
     }
 }
@@ -79,7 +76,7 @@ impl BindingSurface for Configuration {
 
     fn socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            *self.raw.terminal_socket_mode.payload().payload() as u32,
+            self.raw.terminal_socket_mode as u32,
         ))
     }
 
@@ -97,7 +94,7 @@ impl BindingSurface for Configuration {
 
     fn meta_socket_mode(&self) -> Option<RuntimeSocketMode> {
         Some(RuntimeSocketMode::new(
-            *self.raw.meta_terminal_socket_mode.payload().payload() as u32,
+            self.raw.meta_terminal_socket_mode as u32,
         ))
     }
 }

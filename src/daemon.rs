@@ -1,23 +1,11 @@
 use kameo::actor::ActorRef;
-use meta_signal_terminal::{
-    MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
-};
-use signal_frame::{
-    ExchangeIdentifier, ExchangeLane, LaneSequence, NonEmpty, Reply, Request, SessionEpoch,
-    SubReply,
-};
-use signal_terminal::{
-    Frame, FrameBody, Input, Output, SubscribeTerminalWorkerLifecycle, TerminalEvent,
-};
+use signal_terminal::{Query, Response, SubscribeTerminalWorkerLifecycleRequest};
 use thiserror::Error;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::OnceCell;
-use triad_runtime::{
-    AcceptedConnection, FrameBody as LengthPrefixedFrameBody, FrameError, LengthPrefixedCodec,
-};
+use triad_runtime::{AcceptedConnection, FrameError};
 
 use crate::{
-    Configuration, ConfigurationError, Error as TerminalError, Result as TerminalResult,
+    Configuration, ConfigurationError, Error as TerminalError, Result as TerminalResult, frame,
     schema::daemon::ComponentDaemon,
     supervisor::{
         TerminalSupervisor, TerminalSupervisorMetaRequest, TerminalSupervisorObservedEvent,
@@ -43,9 +31,6 @@ pub enum TerminalDaemonError {
     #[error("daemon frame error: {0}")]
     Frame(#[from] FrameError),
 
-    #[error("daemon signal frame error: {0}")]
-    SignalFrame(#[from] signal_frame::FrameError),
-
     #[error("daemon terminal error: {0}")]
     Terminal(#[from] TerminalError),
 }
@@ -69,15 +54,10 @@ impl TerminalEngine {
         &self,
         mut connection: AcceptedConnection,
     ) -> Result<(), TerminalDaemonError> {
-        let body = LengthPrefixedCodec::default()
-            .read_body_async(connection.stream_mut())
-            .await?;
-        let request = TerminalSignalRequest::decode(body.bytes())?;
-        let exchange = request.exchange();
-        match request.into_request() {
-            Input::SubscribeTerminalWorkerLifecycle(subscription) => {
-                self.handle_subscription(connection, exchange, subscription)
-                    .await?;
+        let request = frame::terminal::read_query_async(connection.stream_mut()).await?;
+        match request {
+            Query::SubscribeTerminalWorkerLifecycle(subscription) => {
+                self.handle_subscription(connection, subscription).await?;
             }
             request_payload => {
                 let reply = self
@@ -85,10 +65,8 @@ impl TerminalEngine {
                     .await?
                     .ask(TerminalSupervisorRequest::new(request_payload))
                     .await
-                    .map_err(TerminalActorCall::from_error)?;
-                TerminalSignalReply::new(exchange, reply)
-                    .write(connection.stream_mut())
-                    .await?;
+                    .map_err(actor_call)?;
+                frame::terminal::write_response_async(connection.stream_mut(), &reply).await?;
             }
         }
         Ok(())
@@ -97,25 +75,21 @@ impl TerminalEngine {
     async fn handle_subscription(
         &self,
         mut connection: AcceptedConnection,
-        exchange: ExchangeIdentifier,
-        subscription: SubscribeTerminalWorkerLifecycle,
+        subscription: SubscribeTerminalWorkerLifecycleRequest,
     ) -> Result<(), TerminalDaemonError> {
         let start = self
             .supervisor()
             .await?
             .ask(TerminalSupervisorSubscriptionRequest::new(subscription))
             .await
-            .map_err(TerminalActorCall::from_error)?;
+            .map_err(actor_call)?;
         match start {
             TerminalSupervisorSubscriptionStart::Immediate(reply) => {
-                TerminalSignalReply::new(exchange, reply)
-                    .write(connection.stream_mut())
-                    .await?;
+                frame::terminal::write_response_async(connection.stream_mut(), &reply).await?;
             }
             TerminalSupervisorSubscriptionStart::Stream(plan) => {
                 TerminalSubscriptionRelay::new(
                     self.supervisor().await?.clone(),
-                    exchange,
                     connection,
                     plan.socket_path().clone(),
                     plan.into_subscription(),
@@ -131,22 +105,15 @@ impl TerminalEngine {
         &self,
         mut connection: AcceptedConnection,
     ) -> Result<(), TerminalDaemonError> {
-        let body = LengthPrefixedCodec::default()
-            .read_body_async(connection.stream_mut())
-            .await?;
-        let request = MetaTerminalSignalRequest::decode(body.bytes())?;
+        let request = frame::meta::read_query_async(connection.stream_mut()).await?;
         let reply = self
             .supervisor()
             .await?
-            .ask(TerminalSupervisorMetaRequest::new(
-                request.request().clone(),
-            ))
+            .ask(TerminalSupervisorMetaRequest::new(request))
             .await
-            .map_err(TerminalActorCall::from_error)?
+            .map_err(actor_call)?
             .into_reply();
-        MetaTerminalSignalReply::new(request.exchange(), reply)
-            .write(connection.stream_mut())
-            .await?;
+        frame::meta::write_response_async(connection.stream_mut(), &reply).await?;
         Ok(())
     }
 }
@@ -184,151 +151,27 @@ impl ComponentDaemon for TerminalProcessDaemon {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TerminalSignalRequest {
-    exchange: ExchangeIdentifier,
-    request: Input,
-}
-
-impl TerminalSignalRequest {
-    fn decode(body: &[u8]) -> Result<Self, signal_frame::FrameError> {
-        match Frame::decode(body)?.into_body() {
-            FrameBody::Request { exchange, request } => {
-                Ok(Self::new(exchange, Self::single_payload(request)?))
-            }
-            _ => Err(signal_frame::FrameError::ArchiveDeserialize),
-        }
-    }
-
-    fn new(exchange: ExchangeIdentifier, request: Input) -> Self {
-        Self { exchange, request }
-    }
-
-    fn exchange(&self) -> ExchangeIdentifier {
-        self.exchange
-    }
-
-    fn into_request(self) -> Input {
-        self.request
-    }
-
-    fn single_payload(request: Request<Input>) -> Result<Input, signal_frame::FrameError> {
-        let (request, tail) = request.payloads.into_head_and_tail();
-        if tail.is_empty() {
-            Ok(request)
-        } else {
-            Err(signal_frame::FrameError::ArchiveDeserialize)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TerminalSignalReply {
-    exchange: ExchangeIdentifier,
-    reply: Output,
-}
-
-impl TerminalSignalReply {
-    fn new(exchange: ExchangeIdentifier, reply: Output) -> Self {
-        Self { exchange, reply }
-    }
-
-    async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = Frame::new(FrameBody::Reply {
-            exchange: self.exchange,
-            reply: Reply::committed(NonEmpty::single(SubReply::Ok(self.reply))),
-        });
-        LengthPrefixedCodec::default()
-            .write_body_async(stream, &LengthPrefixedFrameBody::new(frame.encode()?))
-            .await?;
-        stream.flush().await.map_err(FrameError::from)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MetaTerminalSignalRequest {
-    exchange: ExchangeIdentifier,
-    request: MetaTerminalRequest,
-}
-
-impl MetaTerminalSignalRequest {
-    fn decode(body: &[u8]) -> Result<Self, signal_frame::FrameError> {
-        match MetaTerminalFrame::decode(body)?.into_body() {
-            MetaTerminalFrameBody::Request { exchange, request } => {
-                Ok(Self::new(exchange, Self::single_payload(request)?))
-            }
-            _ => Err(signal_frame::FrameError::ArchiveDeserialize),
-        }
-    }
-
-    fn new(exchange: ExchangeIdentifier, request: MetaTerminalRequest) -> Self {
-        Self { exchange, request }
-    }
-
-    fn exchange(&self) -> ExchangeIdentifier {
-        self.exchange
-    }
-
-    fn request(&self) -> &MetaTerminalRequest {
-        &self.request
-    }
-
-    fn single_payload(
-        request: Request<MetaTerminalRequest>,
-    ) -> Result<MetaTerminalRequest, signal_frame::FrameError> {
-        let (request, tail) = request.payloads.into_head_and_tail();
-        if tail.is_empty() {
-            Ok(request)
-        } else {
-            Err(signal_frame::FrameError::ArchiveDeserialize)
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MetaTerminalSignalReply {
-    exchange: ExchangeIdentifier,
-    reply: MetaTerminalReply,
-}
-
-impl MetaTerminalSignalReply {
-    fn new(exchange: ExchangeIdentifier, reply: MetaTerminalReply) -> Self {
-        Self { exchange, reply }
-    }
-
-    async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = MetaTerminalFrame::new(MetaTerminalFrameBody::Reply {
-            exchange: self.exchange,
-            reply: Reply::committed(NonEmpty::single(SubReply::Ok(self.reply))),
-        });
-        LengthPrefixedCodec::default()
-            .write_body_async(stream, &LengthPrefixedFrameBody::new(frame.encode()?))
-            .await?;
-        stream.flush().await.map_err(FrameError::from)?;
-        Ok(())
-    }
-}
-
+/// Relays one cell's lifecycle subscription to the client that asked for it.
+///
+/// The cell sends its initial snapshot and then every later event on the
+/// same `Response` frame shape, so the relay records the first and passes
+/// each one through until the cell closes the connection.
 struct TerminalSubscriptionRelay {
     supervisor: ActorRef<TerminalSupervisor>,
-    exchange: ExchangeIdentifier,
     client: AcceptedConnection,
     cell_socket_path: std::path::PathBuf,
-    subscription: SubscribeTerminalWorkerLifecycle,
+    subscription: SubscribeTerminalWorkerLifecycleRequest,
 }
 
 impl TerminalSubscriptionRelay {
     fn new(
         supervisor: ActorRef<TerminalSupervisor>,
-        exchange: ExchangeIdentifier,
         client: AcceptedConnection,
         cell_socket_path: std::path::PathBuf,
-        subscription: SubscribeTerminalWorkerLifecycle,
+        subscription: SubscribeTerminalWorkerLifecycleRequest,
     ) -> Self {
         Self {
             supervisor,
-            exchange,
             client,
             cell_socket_path,
             subscription,
@@ -337,28 +180,28 @@ impl TerminalSubscriptionRelay {
 
     async fn run(mut self) -> Result<(), TerminalDaemonError> {
         let mut cell = tokio::net::UnixStream::connect(&self.cell_socket_path).await?;
-        TerminalSignalRequestFrame::new(self.subscription.clone())
-            .write(&mut cell)
-            .await?;
+        frame::terminal::write_query_async(
+            &mut cell,
+            &Query::SubscribeTerminalWorkerLifecycle(self.subscription.clone()),
+        )
+        .await?;
         let mut first_reply_seen = false;
         loop {
-            match TerminalSignalOutput::read_from(&mut cell).await {
-                Ok(TerminalSignalOutput::Reply(reply)) => {
-                    self.record_reply(reply.clone()).await?;
-                    first_reply_seen = true;
-                    TerminalSignalReply::new(self.exchange, reply)
-                        .write(self.client.stream_mut())
+            match frame::terminal::read_response_async(&mut cell).await {
+                Ok(response) => {
+                    if !first_reply_seen {
+                        self.record_reply(response.clone()).await?;
+                        first_reply_seen = true;
+                    }
+                    frame::terminal::write_response_async(self.client.stream_mut(), &response)
                         .await?;
                 }
-                Ok(TerminalSignalOutput::Event(event)) => {
-                    event.write(self.client.stream_mut()).await?;
-                }
-                Err(TerminalDaemonError::Frame(FrameError::Io(error)))
+                Err(TerminalError::Io(error))
                     if error.kind() == std::io::ErrorKind::UnexpectedEof =>
                 {
                     break;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             }
         }
         if first_reply_seen {
@@ -371,146 +214,17 @@ impl TerminalSubscriptionRelay {
         }
     }
 
-    async fn record_reply(&self, reply: Output) -> Result<(), TerminalDaemonError> {
+    async fn record_reply(&self, reply: Response) -> Result<(), TerminalDaemonError> {
         self.supervisor
             .ask(TerminalSupervisorObservedEvent::new(reply))
             .await
-            .map_err(TerminalActorCall::from_error)?;
+            .map_err(actor_call)?;
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TerminalSignalRequestFrame {
-    request: Input,
-}
-
-impl TerminalSignalRequestFrame {
-    fn new(subscription: SubscribeTerminalWorkerLifecycle) -> Self {
-        Self {
-            request: Input::SubscribeTerminalWorkerLifecycle(subscription),
-        }
-    }
-
-    async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = Frame::new(FrameBody::Request {
-            exchange: TerminalSyntheticExchange::new().into_exchange(),
-            request: Request::from_payload(self.request),
-        });
-        LengthPrefixedCodec::default()
-            .write_body_async(stream, &LengthPrefixedFrameBody::new(frame.encode()?))
-            .await?;
-        stream.flush().await.map_err(FrameError::from)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TerminalSignalOutput {
-    Reply(Output),
-    Event(TerminalSignalEvent),
-}
-
-impl TerminalSignalOutput {
-    async fn read_from(stream: &mut tokio::net::UnixStream) -> Result<Self, TerminalDaemonError> {
-        let body = LengthPrefixedCodec::default()
-            .read_body_async(stream)
-            .await?;
-        match Frame::decode(body.bytes())?.into_body() {
-            FrameBody::Reply { reply, .. } => match reply {
-                Reply::Accepted { per_operation, .. } => match per_operation.into_head() {
-                    SubReply::Ok(reply) => Ok(Self::Reply(reply)),
-                    _ => Err(TerminalError::UnexpectedSignalFrame {
-                        got: "non-accepted terminal subscription reply".to_string(),
-                    }
-                    .into()),
-                },
-                Reply::Rejected { reason } => Err(TerminalError::UnexpectedSignalFrame {
-                    got: format!("{reason:?}"),
-                }
-                .into()),
-            },
-            FrameBody::SubscriptionEvent {
-                event_identifier,
-                token,
-                event,
-            } => Ok(Self::Event(TerminalSignalEvent {
-                event_identifier,
-                token,
-                event,
-            })),
-            other => Err(TerminalError::UnexpectedSignalFrame {
-                got: format!("{other:?}"),
-            }
-            .into()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TerminalSignalEvent {
-    event_identifier: signal_frame::StreamEventIdentifier,
-    token: signal_frame::SubscriptionTokenInner,
-    event: TerminalEvent,
-}
-
-impl TerminalSignalEvent {
-    async fn write(self, stream: &mut tokio::net::UnixStream) -> Result<(), TerminalDaemonError> {
-        let frame = Frame::new(FrameBody::SubscriptionEvent {
-            event_identifier: self.event_identifier,
-            token: self.token,
-            event: self.event,
-        });
-        LengthPrefixedCodec::default()
-            .write_body_async(stream, &LengthPrefixedFrameBody::new(frame.encode()?))
-            .await?;
-        stream.flush().await.map_err(FrameError::from)?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TerminalSyntheticExchange {
-    exchange: ExchangeIdentifier,
-}
-
-impl TerminalSyntheticExchange {
-    fn new() -> Self {
-        Self {
-            exchange: ExchangeIdentifier::new(
-                SessionEpoch::new(0),
-                ExchangeLane::Connector,
-                LaneSequence::first(),
-            ),
-        }
-    }
-
-    fn into_exchange(self) -> ExchangeIdentifier {
-        self.exchange
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TerminalActorCall {
-    detail: String,
-}
-
-impl TerminalActorCall {
-    fn from_error(error: impl std::fmt::Display) -> Self {
-        Self {
-            detail: error.to_string(),
-        }
-    }
-
-    fn into_terminal_error(self) -> TerminalError {
-        TerminalError::ActorCall {
-            detail: self.detail,
-        }
-    }
-}
-
-impl From<TerminalActorCall> for TerminalDaemonError {
-    fn from(call: TerminalActorCall) -> Self {
-        Self::Terminal(call.into_terminal_error())
-    }
+fn actor_call(error: impl std::fmt::Display) -> TerminalDaemonError {
+    TerminalDaemonError::Terminal(TerminalError::ActorCall {
+        detail: error.to_string(),
+    })
 }

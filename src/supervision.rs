@@ -7,15 +7,17 @@ use std::thread::JoinHandle;
 use kameo::actor::{Actor, ActorRef, Spawn};
 use kameo::error::Infallible;
 use kameo::message::{Context, Message};
-use signal_frame::{ExchangeIdentifier, NonEmpty, Reply, SubReply};
 use signal_persona::{
-    ComponentHealth, ComponentHealthReport, ComponentIdentity, ComponentKind, ComponentName,
-    ComponentReady, EngineManagementProtocolVersion, Frame as SupervisionFrame, FrameBody,
-    Operation as SupervisionRequest, Query as SupervisionQuery, Reply as SupervisionReply,
-    StopAcknowledgement,
+    ComponentHealth, ComponentIdentity, ComponentKind, ComponentName, LifecycleQuery,
+    Query as SupervisionQuery, Response as SupervisionResponse,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::Result;
+use crate::frame;
+
+/// The identity and health this component announces on its supervision
+/// socket.
+#[derive(Debug, Clone, PartialEq)]
 pub struct SupervisionProfile {
     name: ComponentName,
     kind: ComponentKind,
@@ -25,7 +27,7 @@ pub struct SupervisionProfile {
 impl SupervisionProfile {
     pub fn terminal() -> Self {
         Self {
-            name: ComponentName::new("terminal"),
+            name: "terminal".to_string(),
             kind: ComponentKind::Terminal,
             health: ComponentHealth::Running,
         }
@@ -45,7 +47,7 @@ impl SupervisionSocketMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SupervisionListener {
     profile: SupervisionProfile,
     socket: PathBuf,
@@ -106,36 +108,29 @@ impl SupervisionPhase {
         reference
     }
 
-    fn reply(&mut self, request: SupervisionRequest) -> SupervisionReply {
+    fn reply(&mut self, request: SupervisionQuery) -> SupervisionResponse {
         self.request_count = self.request_count.saturating_add(1);
         match request {
-            SupervisionRequest::Announce(_) => SupervisionReply::Identified(
-                ComponentIdentity::new(
-                    self.profile.name.clone(),
-                    self.profile.kind,
-                    EngineManagementProtocolVersion::new(1),
-                    None,
-                )
-                .into(),
-            ),
-            SupervisionRequest::Query(query) => match query.into_payload() {
-                SupervisionQuery::ReadinessStatus(_) => {
-                    SupervisionReply::Ready(ComponentReady::from_started_at(None).into())
+            SupervisionQuery::Announce(_) => SupervisionResponse::Identified(ComponentIdentity {
+                component_name: self.profile.name.clone(),
+                component_kind: self.profile.kind.clone(),
+                engine_management_protocol_version: 1,
+                component_startup_error_option: None,
+            }),
+            SupervisionQuery::Query(query) => match query {
+                LifecycleQuery::ReadinessStatus(_) => SupervisionResponse::Ready(None),
+                LifecycleQuery::HealthStatus(_) => {
+                    SupervisionResponse::HealthReport(self.profile.health.clone())
                 }
-                SupervisionQuery::HealthStatus(_) => SupervisionReply::HealthReport(
-                    ComponentHealthReport::new(self.profile.health).into(),
-                ),
             },
-            SupervisionRequest::Stop(_) => SupervisionReply::StopAcknowledged(
-                StopAcknowledgement::from_drain_completed_at(None).into(),
-            ),
+            SupervisionQuery::Stop(_) => SupervisionResponse::StopAcknowledged(None),
         }
     }
 }
 
 #[derive(Debug, kameo::Reply)]
 struct SupervisionPhaseReply {
-    reply: SupervisionReply,
+    reply: SupervisionResponse,
 }
 
 impl Actor for SupervisionPhase {
@@ -152,7 +147,7 @@ impl Actor for SupervisionPhase {
 
 #[derive(Debug)]
 struct HandleSupervisionRequest {
-    request: SupervisionRequest,
+    request: SupervisionQuery,
 }
 
 impl Message<HandleSupervisionRequest> for SupervisionPhase {
@@ -172,16 +167,11 @@ impl Message<HandleSupervisionRequest> for SupervisionPhase {
 struct SupervisionServer {
     profile: SupervisionProfile,
     listener: UnixListener,
-    codec: SupervisionFrameCodec,
 }
 
 impl SupervisionServer {
     fn new(profile: SupervisionProfile, listener: UnixListener) -> Self {
-        Self {
-            profile,
-            listener,
-            codec: SupervisionFrameCodec::new(1024 * 1024),
-        }
+        Self { profile, listener }
     }
 
     fn run(self) {
@@ -191,137 +181,44 @@ impl SupervisionServer {
             let Ok(mut stream) = incoming else {
                 continue;
             };
-            let _ = self.serve_connection(&runtime, &phase, &mut stream);
+            let _ = Self::serve_connection(&runtime, &phase, &mut stream);
         }
     }
 
     fn serve_connection(
-        &self,
         runtime: &tokio::runtime::Runtime,
         phase: &ActorRef<SupervisionPhase>,
         stream: &mut UnixStream,
-    ) -> std::io::Result<()> {
-        while let Ok(request) = self.codec.read_request(stream) {
+    ) -> Result<()> {
+        while let Ok(request) = frame::persona::read_query(stream) {
             let reply = runtime
-                .block_on(
-                    phase
-                        .ask(HandleSupervisionRequest {
-                            request: request.request,
-                        })
-                        .send(),
-                )
-                .map_err(|error| self.codec.io_error(error))?;
-            self.codec
-                .write_reply(stream, request.exchange, reply.reply)?;
+                .block_on(phase.ask(HandleSupervisionRequest { request }).send())
+                .map_err(|error| crate::Error::ActorCall {
+                    detail: error.to_string(),
+                })?;
+            frame::persona::write_response(stream, &reply.reply)?;
         }
         Ok(())
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct SupervisionFrameCodec {
-    maximum_frame_bytes: usize,
-}
+/// The `signal-persona` frame pair, as the supervision plane uses it.
+///
+/// A thin naming over [`crate::frame::persona`], kept because the
+/// supervision witnesses address it by name.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SupervisionFrameCodec;
 
 impl SupervisionFrameCodec {
-    pub const fn new(maximum_frame_bytes: usize) -> Self {
-        Self {
-            maximum_frame_bytes,
-        }
+    pub const fn new() -> Self {
+        Self
     }
 
-    pub fn read_reply(&self, reader: &mut impl Read) -> std::io::Result<SupervisionReply> {
-        let frame = self.read_frame(reader)?;
-        match frame.into_body() {
-            FrameBody::Reply { reply, .. } => match reply {
-                Reply::Accepted { per_operation, .. } => {
-                    let (sub_reply, tail) = per_operation.into_head_and_tail();
-                    if !tail.is_empty() {
-                        return Err(self.io_error(format!(
-                            "expected one supervision reply operation, got {}",
-                            tail.len() + 1
-                        )));
-                    }
-                    match sub_reply {
-                        SubReply::Ok(payload) => Ok(payload),
-                        other => Err(self.io_error(format!("{other:?}"))),
-                    }
-                }
-                Reply::Rejected { reason } => Err(self.io_error(reason)),
-            },
-            other => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("unexpected supervision frame body: {other:?}"),
-            )),
-        }
+    pub fn read_reply(&self, reader: &mut impl Read) -> Result<SupervisionResponse> {
+        frame::persona::read_response(reader)
     }
 
-    fn read_request(&self, reader: &mut impl Read) -> std::io::Result<ReceivedSupervisionRequest> {
-        let frame = self.read_frame(reader)?;
-        match frame.into_body() {
-            FrameBody::Request { exchange, request } => {
-                let mut operations = request.payloads.into_vec();
-                if operations.len() != 1 {
-                    return Err(self.io_error(format!(
-                        "expected one supervision operation, got {}",
-                        operations.len()
-                    )));
-                }
-                Ok(ReceivedSupervisionRequest {
-                    exchange,
-                    request: operations.remove(0),
-                })
-            }
-            other => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("unexpected supervision frame body: {other:?}"),
-            )),
-        }
+    pub fn write_request(&self, writer: &mut impl Write, request: &SupervisionQuery) -> Result<()> {
+        frame::persona::write_query(writer, request)
     }
-
-    fn write_reply(
-        &self,
-        writer: &mut impl Write,
-        exchange: ExchangeIdentifier,
-        reply: SupervisionReply,
-    ) -> std::io::Result<()> {
-        let frame = SupervisionFrame::new(FrameBody::Reply {
-            exchange,
-            reply: Reply::committed(NonEmpty::single(SubReply::Ok(reply))),
-        });
-        let bytes = frame
-            .encode_length_prefixed()
-            .map_err(|error| self.io_error(error))?;
-        writer.write_all(bytes.as_slice())?;
-        writer.flush()
-    }
-
-    fn read_frame(&self, reader: &mut impl Read) -> std::io::Result<SupervisionFrame> {
-        let mut prefix = [0_u8; 4];
-        reader.read_exact(&mut prefix)?;
-        let length = u32::from_be_bytes(prefix) as usize;
-        if length > self.maximum_frame_bytes {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("supervision frame length {length} exceeds maximum"),
-            ));
-        }
-        let mut bytes = Vec::with_capacity(4 + length);
-        bytes.extend_from_slice(&prefix);
-        bytes.resize(4 + length, 0);
-        reader.read_exact(&mut bytes[4..])?;
-        SupervisionFrame::decode_length_prefixed(bytes.as_slice())
-            .map_err(|error| self.io_error(error))
-    }
-
-    fn io_error(&self, error: impl std::fmt::Display) -> std::io::Error {
-        let _maximum_frame_bytes = self.maximum_frame_bytes;
-        std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ReceivedSupervisionRequest {
-    exchange: ExchangeIdentifier,
-    request: SupervisionRequest,
 }

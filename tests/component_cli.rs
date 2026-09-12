@@ -1,4 +1,11 @@
-#![cfg(feature = "nota-text")]
+//! End-to-end witness for the two component CLIs.
+//!
+//! Each CLI takes one inline Datom value, sends it as a `Signal` frame over
+//! its socket, and prints the typed reply as Datom text. The fake server is
+//! a real socket peer reading and writing the same frames the daemon does.
+//!
+//! This ran behind the retired `nota-text` feature and so never ran at all.
+//! The feature is gone and the witness now runs on every build.
 
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
@@ -7,13 +14,12 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use meta_signal_terminal::{
-    MetaTerminalFrame, MetaTerminalFrameBody, MetaTerminalReply, MetaTerminalRequest,
-    RetireSession, SessionRetired,
+    Query as MetaQuery, Response as MetaResponse, SessionRetired,
 };
-use nota::NotaEncode;
-use signal_frame::{NonEmpty, Reply, SubReply};
-use signal_terminal::{Frame, FrameBody, Input, Output, TerminalConnection, TerminalName};
-use triad_runtime::{FrameBody as RuntimeFrameBody, LengthPrefixedCodec};
+use signal_terminal::{
+    Query, Response, TerminalConnectionRequest, TerminalReadyReply,
+};
+use terminal::{datom_text, frame};
 
 #[derive(Debug)]
 struct CliSocketFixture {
@@ -49,27 +55,26 @@ fn terminal_cli_reaches_working_socket_and_prints_typed_reply() {
     let listener = UnixListener::bind(fixture.socket()).expect("fake terminal socket binds");
     let server = thread::spawn(move || {
         let (mut stream, _address) = listener.accept().expect("terminal cli connects");
-        let (exchange, request) = TerminalCliServer::read_request(&mut stream);
+        let request = read_terminal_query(&mut stream);
         assert_eq!(
             request,
-            Input::TerminalConnection(TerminalConnection::new(
-                TerminalName::new("operator".to_string()).into()
-            ))
+            Query::TerminalConnection(TerminalConnectionRequest {
+                terminal: "operator".to_string(),
+            })
         );
-        TerminalCliServer::write_reply(
+        frame::terminal::write_response(
             &mut stream,
-            exchange,
-            Output::TerminalReady(signal_terminal::TerminalReady {
-                terminal: TerminalName::new("operator".to_string()).into(),
-                generation: signal_terminal::TerminalGeneration::new(1).into(),
+            &Response::TerminalReady(TerminalReadyReply {
+                terminal: "operator".to_string(),
+                generation: 1,
             }),
-        );
+        )
+        .expect("fake terminal server writes its reply");
     });
 
-    let request = Input::TerminalConnection(TerminalConnection::new(
-        TerminalName::new("operator".to_string()).into(),
-    ))
-    .to_string();
+    let request = datom_text::textualize(&Query::TerminalConnection(TerminalConnectionRequest {
+        terminal: "operator".to_string(),
+    }));
     let output = Command::new(env!("CARGO_BIN_EXE_terminal"))
         .env("TERMINAL_SOCKET", fixture.socket())
         .arg(request)
@@ -96,27 +101,19 @@ fn meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply() {
     let listener = UnixListener::bind(fixture.socket()).expect("fake meta-terminal socket binds");
     let server = thread::spawn(move || {
         let (mut stream, _address) = listener.accept().expect("meta-terminal cli connects");
-        let (exchange, request) = MetaTerminalCliServer::read_request(&mut stream);
-        assert_eq!(
-            request,
-            MetaTerminalRequest::RetireSession(RetireSession {
-                name: TerminalName::new("operator".to_string()),
-            })
-        );
-        MetaTerminalCliServer::write_reply(
+        let request = read_meta_query(&mut stream);
+        assert_eq!(request, MetaQuery::RetireSession("operator".to_string()));
+        frame::meta::write_response(
             &mut stream,
-            exchange,
-            MetaTerminalReply::SessionRetired(SessionRetired {
-                name: TerminalName::new("operator".to_string()),
-                exit_status: None,
+            &MetaResponse::SessionRetired(SessionRetired {
+                terminal_name: "operator".to_string(),
+                selected_exit_status: None,
             }),
-        );
+        )
+        .expect("fake meta-terminal server writes its reply");
     });
 
-    let request = MetaTerminalRequest::RetireSession(RetireSession {
-        name: TerminalName::new("operator".to_string()),
-    })
-    .to_nota();
+    let request = datom_text::textualize(&MetaQuery::RetireSession("operator".to_string()));
     let output = Command::new(env!("CARGO_BIN_EXE_meta-terminal"))
         .env("TERMINAL_META_SOCKET", fixture.socket())
         .arg(request)
@@ -137,85 +134,10 @@ fn meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply() {
     server.join().expect("fake meta-terminal server exits");
 }
 
-#[derive(Debug)]
-struct TerminalCliServer;
-
-impl TerminalCliServer {
-    fn read_request(stream: &mut UnixStream) -> (signal_frame::ExchangeIdentifier, Input) {
-        let body = RuntimeFrame::read(stream);
-        match Frame::decode(body.bytes())
-            .expect("decode terminal signal frame")
-            .into_body()
-        {
-            FrameBody::Request { exchange, request } => {
-                let (payload, tail) = request.payloads.into_head_and_tail();
-                assert!(tail.is_empty(), "terminal cli should send one payload");
-                (exchange, payload)
-            }
-            other => panic!("expected terminal request frame, got {other:?}"),
-        }
-    }
-
-    fn write_reply(
-        stream: &mut UnixStream,
-        exchange: signal_frame::ExchangeIdentifier,
-        output: Output,
-    ) {
-        let frame = Frame::new(FrameBody::Reply {
-            exchange,
-            reply: Reply::committed(NonEmpty::single(SubReply::Ok(output))),
-        });
-        RuntimeFrame::write(stream, frame.encode().expect("encode terminal reply"));
-    }
+fn read_terminal_query(stream: &mut UnixStream) -> Query {
+    frame::terminal::read_query(stream).expect("terminal cli sends one Signal query frame")
 }
 
-#[derive(Debug)]
-struct MetaTerminalCliServer;
-
-impl MetaTerminalCliServer {
-    fn read_request(
-        stream: &mut UnixStream,
-    ) -> (signal_frame::ExchangeIdentifier, MetaTerminalRequest) {
-        let body = RuntimeFrame::read(stream);
-        match MetaTerminalFrame::decode(body.bytes())
-            .expect("decode meta-terminal signal frame")
-            .into_body()
-        {
-            MetaTerminalFrameBody::Request { exchange, request } => {
-                let (payload, tail) = request.payloads.into_head_and_tail();
-                assert!(tail.is_empty(), "meta-terminal cli should send one payload");
-                (exchange, payload)
-            }
-            other => panic!("expected meta-terminal request frame, got {other:?}"),
-        }
-    }
-
-    fn write_reply(
-        stream: &mut UnixStream,
-        exchange: signal_frame::ExchangeIdentifier,
-        reply: MetaTerminalReply,
-    ) {
-        let frame = MetaTerminalFrame::new(MetaTerminalFrameBody::Reply {
-            exchange,
-            reply: Reply::committed(NonEmpty::single(SubReply::Ok(reply))),
-        });
-        RuntimeFrame::write(stream, frame.encode().expect("encode meta-terminal reply"));
-    }
-}
-
-#[derive(Debug)]
-struct RuntimeFrame;
-
-impl RuntimeFrame {
-    fn read(stream: &mut UnixStream) -> RuntimeFrameBody {
-        LengthPrefixedCodec::default()
-            .read_body(stream)
-            .expect("read runtime frame body")
-    }
-
-    fn write(stream: &mut UnixStream, bytes: Vec<u8>) {
-        LengthPrefixedCodec::default()
-            .write_body(stream, &RuntimeFrameBody::new(bytes))
-            .expect("write runtime frame body");
-    }
+fn read_meta_query(stream: &mut UnixStream) -> MetaQuery {
+    frame::meta::read_query(stream).expect("meta-terminal cli sends one Signal query frame")
 }

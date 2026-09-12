@@ -42,7 +42,7 @@ impl CaptureValidation {
     fn from_arguments(arguments: &[OsString]) -> Result<Self> {
         let mut parser = CaptureValidatorArguments::new(arguments);
         let capture_path = parser.required_path_option("--file")?;
-        let terminal = TerminalName::new(parser.required_string_option("--terminal")?);
+        let terminal: TerminalName = parser.required_string_option("--terminal")?;
         let expected_text = parser.required_string_option("--contains-text")?;
         parser.expect_finished()?;
         Ok(Self {
@@ -109,7 +109,7 @@ impl TerminalCapturedLine {
         fields.require_value(0, "TerminalCaptured")?;
         fields.require_u64(2)?;
         Ok(Self {
-            terminal: TerminalName::new(fields.required(1)?.to_string()),
+            terminal: fields.required(1)?.to_string(),
             bytes: CapturedBytes::from_hex(fields.required(3)?)?,
         })
     }

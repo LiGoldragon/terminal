@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use signal_terminal::{Output, TerminalConnection, TerminalName, TerminalReady};
+use signal_terminal::{Query, Response, TerminalConnectionRequest, TerminalReadyReply};
 use terminal::capture_validator::CaptureValidatorCommandLine;
 use terminal::signal_cli::{TerminalSignalOperation, TerminalSignalRequest};
 use terminal::supervisor::TerminalSupervisorFrameCodec;
@@ -71,21 +71,23 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
     let server = thread::spawn(move || {
         let (stream, _address) = listener.accept().expect("client connects");
         let mut stream = std::io::BufReader::new(stream);
-        let codec = TerminalSupervisorFrameCodec::default();
+        let codec = TerminalSupervisorFrameCodec::new();
         let request = codec
             .read_request(&mut stream)
             .expect("client writes signal request");
         assert_eq!(
             request,
-            TerminalConnection::new(TerminalName::new("operator".to_string()).into()).into()
+            Query::TerminalConnection(TerminalConnectionRequest {
+                terminal: "operator".to_string(),
+            })
         );
         let stream: &mut UnixStream = stream.get_mut();
         codec
-            .write_event(
+            .write_reply(
                 stream,
-                Output::from(TerminalReady {
-                    terminal: TerminalName::new("operator".to_string()).into(),
-                    generation: signal_terminal::TerminalGeneration::new(1).into(),
+                &Response::TerminalReady(TerminalReadyReply {
+                    terminal: "operator".to_string(),
+                    generation: 1,
                 }),
             )
             .expect("server writes signal event");
@@ -93,7 +95,7 @@ fn terminal_signal_cli_connect_crosses_socket_signal_frame() {
 
     let request = TerminalSignalRequest::new(
         fixture.socket(),
-        TerminalName::new("operator".to_string()),
+        "operator".to_string(),
         TerminalSignalOperation::Connect,
     );
     let mut output = Vec::new();

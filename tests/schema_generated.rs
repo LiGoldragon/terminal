@@ -1,45 +1,12 @@
-use terminal::schema::{nexus, sema, signal};
+//! The emitted component-daemon surface terminal actually binds.
+//!
+//! The retired stack also emitted `signal`, `sema` and `nexus` modules into
+//! `src/schema/`. Nothing in terminal referenced them — they were 5014 lines
+//! of generated code whose only reader was a test built to exercise it — and
+//! `signal-terminal` 2.0.1 now carries the contract they duplicated, so they
+//! were deleted rather than regenerated.
+
 use terminal::{ComponentDaemon, TerminalProcessDaemon};
-
-#[test]
-fn generated_terminal_planes_expose_control_lifecycle_and_registry_nouns() {
-    let session = signal::SessionRecord {
-        session_name: "shell".to_owned().into(),
-        session_identifier: 1.into(),
-        socket_path: "/tmp/terminal-cell.sock".to_owned().into(),
-    };
-
-    let injection = signal::WriteInjectionRequest {
-        session_name: "shell".to_owned().into(),
-        input_lease_identifier: 2.into(),
-        injection_sequence: 3.into(),
-        terminal_bytes: vec![
-            u64::from(b'h').into(),
-            u64::from(b'i').into(),
-            u64::from(b'\n').into(),
-        ]
-        .into(),
-    };
-    let signal_input = signal::Input::write_injection(injection);
-    let signal_work = nexus::NexusWork::signal_arrived(signal_input);
-    assert!(matches!(signal_work, nexus::NexusWork::SignalArrived(_)));
-
-    let lifecycle = nexus::SessionLifecycleCommand::create_session(session.clone());
-    let meta_work = nexus::NexusWork::meta_arrived(lifecycle);
-    assert!(matches!(meta_work, nexus::NexusWork::MetaArrived(_)));
-
-    let sema_write = sema::WriteInput::record_session(session);
-    let nexus_write = nexus::NexusAction::command_sema_write(sema_write);
-    assert!(matches!(
-        nexus_write,
-        nexus::NexusAction::CommandSemaWrite(_)
-    ));
-
-    let cell_command = nexus::TerminalCellCommand::write_injection("shell".to_owned().into());
-    let effect = nexus::NexusEffectCommand::run_terminal_cell(cell_command);
-    let nexus_effect = nexus::NexusAction::command_effect(effect);
-    assert!(matches!(nexus_effect, nexus::NexusAction::CommandEffect(_)));
-}
 
 #[test]
 fn generated_terminal_daemon_exposes_working_and_meta_listener_surface() {
