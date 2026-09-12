@@ -130,16 +130,12 @@ impl TerminalSignalOperation {
                     pattern_identifier: pattern_id,
                 })
             }
-            Self::ListPrompts => {
-                Query::ListPromptPatterns(ListPromptPatternsRequest { terminal })
-            }
-            Self::AcquireGate { pattern_id } => {
-                Query::AcquireInputGate(AcquireInputGateRequest {
-                    terminal,
-                    input_gate_reason: "terminal signal cli".to_string(),
-                    prompt_pattern_identifier_selection: pattern_id,
-                })
-            }
+            Self::ListPrompts => Query::ListPromptPatterns(ListPromptPatternsRequest { terminal }),
+            Self::AcquireGate { pattern_id } => Query::AcquireInputGate(AcquireInputGateRequest {
+                terminal,
+                input_gate_reason: "terminal signal cli".to_string(),
+                prompt_pattern_identifier_selection: pattern_id,
+            }),
             Self::ReleaseGate { lease_id } => Query::ReleaseInputGate(ReleaseInputGateRequest {
                 terminal,
                 lease: lease(lease_id),
@@ -158,9 +154,11 @@ impl TerminalSignalOperation {
                     input_bytes: widen_bytes(&bytes),
                 })
             }
-            Self::WorkerLifecycleSnapshot => Query::SubscribeTerminalWorkerLifecycle(
-                SubscribeTerminalWorkerLifecycleRequest { terminal },
-            ),
+            Self::WorkerLifecycleSnapshot => {
+                Query::SubscribeTerminalWorkerLifecycle(SubscribeTerminalWorkerLifecycleRequest {
+                    terminal,
+                })
+            }
         }
     }
 }
@@ -417,9 +415,11 @@ impl TerminalEventLine {
                 snapshot.terminal,
                 snapshot.observations.len()
             )?,
-            Response::SubscriptionRetracted(retracted) => {
-                writeln!(output, "SubscriptionRetracted\t{}", retracted.token.terminal)?
-            }
+            Response::SubscriptionRetracted(retracted) => writeln!(
+                output,
+                "SubscriptionRetracted\t{}",
+                retracted.token.terminal
+            )?,
             Response::SessionList(list) => {
                 writeln!(output, "SessionList\t{}", list.session_entries.len())?
             }

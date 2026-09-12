@@ -75,9 +75,7 @@ impl BindingSurface for Configuration {
     }
 
     fn socket_mode(&self) -> Option<RuntimeSocketMode> {
-        Some(RuntimeSocketMode::new(
-            self.raw.terminal_socket_mode as u32,
-        ))
+        Some(RuntimeSocketMode::new(self.raw.terminal_socket_mode as u32))
     }
 
     fn request_concurrency_limit(&self) -> RequestConcurrencyLimit {

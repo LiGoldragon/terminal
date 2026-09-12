@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use signal_terminal::{
-    Query, Response, TerminalCapturedReply, TerminalDetachedReply, TerminalGeneration, TerminalName,
-    TerminalReadyReply, TerminalRejectedReply, TerminalRejectionReason, TerminalSequence,
-    TranscriptDeltaReply,
+    Query, Response, TerminalCapturedReply, TerminalDetachedReply, TerminalGeneration,
+    TerminalName, TerminalReadyReply, TerminalRejectedReply, TerminalRejectionReason,
+    TerminalSequence, TranscriptDeltaReply,
 };
 
 use crate::error::{Error, Result};

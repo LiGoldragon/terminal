@@ -11,7 +11,7 @@ use meta_signal_terminal::{
     Query as MetaQuery, Response as MetaResponse,
 };
 use signal_terminal::{
-    Query, Response, ResolveSessionRequest, SessionEntry, SessionListReply, SessionResolvedReply,
+    Query, ResolveSessionRequest, Response, SessionEntry, SessionListReply, SessionResolvedReply,
     SubscribeTerminalWorkerLifecycleRequest, TerminalDaemonConfiguration, TerminalOperationKind,
     TerminalRejectedReply, TerminalRejectionReason,
 };
@@ -666,9 +666,35 @@ impl TerminalSupervisorSubscriptionPlan {
     }
 }
 
+/// The spawn-envelope variables the supervisor reads when its arguments
+/// leave a value unsaid.
+///
+/// Taken as a value rather than read from the process at the point of use,
+/// so a witness can state an envelope without mutating the process
+/// environment every other test shares.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TerminalSupervisorEnvironment {
+    socket_path: Option<PathBuf>,
+    store: Option<StoreLocation>,
+}
+
+impl TerminalSupervisorEnvironment {
+    pub fn from_process() -> Self {
+        Self {
+            socket_path: std::env::var_os("PERSONA_SOCKET_PATH").map(PathBuf::from),
+            store: StoreLocation::from_process_environment(),
+        }
+    }
+
+    pub fn new(socket_path: Option<PathBuf>, store: Option<StoreLocation>) -> Self {
+        Self { socket_path, store }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerminalSupervisorCommandLine {
     arguments: Vec<OsString>,
+    environment: TerminalSupervisorEnvironment,
 }
 
 impl TerminalSupervisorCommandLine {
@@ -681,13 +707,29 @@ impl TerminalSupervisorCommandLine {
         I: IntoIterator<Item = S>,
         S: Into<OsString>,
     {
+        Self::from_arguments_with_environment(
+            arguments,
+            TerminalSupervisorEnvironment::from_process(),
+        )
+    }
+
+    pub fn from_arguments_with_environment<I, S>(
+        arguments: I,
+        environment: TerminalSupervisorEnvironment,
+    ) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<OsString>,
+    {
         Self {
             arguments: arguments.into_iter().map(Into::into).collect(),
+            environment,
         }
     }
 
     pub fn daemon(&self) -> Result<TerminalSupervisorDaemon> {
-        TerminalSupervisorArguments::from_arguments(self.arguments.clone()).into_daemon()
+        TerminalSupervisorArguments::from_arguments(self.arguments.clone())
+            .into_daemon(&self.environment)
     }
 
     pub fn run(&self) -> Result<()> {
@@ -698,7 +740,7 @@ impl TerminalSupervisorCommandLine {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TerminalSupervisorArguments {
     socket: Option<PathBuf>,
-    store: StoreLocation,
+    store: Option<StoreLocation>,
 }
 
 impl TerminalSupervisorArguments {
@@ -716,19 +758,23 @@ impl TerminalSupervisorArguments {
             }
         }
 
-        Self {
-            socket,
-            store: store.unwrap_or_else(StoreLocation::from_environment),
-        }
+        Self { socket, store }
     }
 
-    fn into_daemon(self) -> Result<TerminalSupervisorDaemon> {
+    fn into_daemon(
+        self,
+        environment: &TerminalSupervisorEnvironment,
+    ) -> Result<TerminalSupervisorDaemon> {
         let socket = self
             .socket
-            .or_else(|| std::env::var_os("PERSONA_SOCKET_PATH").map(PathBuf::from))
+            .or_else(|| environment.socket_path.clone())
             .ok_or(Error::MissingSocket {
                 component: "terminal-supervisor",
             })?;
-        Ok(TerminalSupervisorDaemon::from_socket(socket).with_store(self.store))
+        let store = self
+            .store
+            .or_else(|| environment.store.clone())
+            .unwrap_or_else(StoreLocation::default_path);
+        Ok(TerminalSupervisorDaemon::from_socket(socket).with_store(store))
     }
 }

@@ -62,7 +62,6 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              cargoExtraArgs = "--features nota-text";
               pname = "terminal";
               meta.mainProgram = "terminal";
             }
@@ -253,14 +252,14 @@
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              cargoTestExtraArgs = "--features nota-text --test component_cli terminal_cli_reaches_working_socket_and_prints_typed_reply -- --exact";
+              cargoTestExtraArgs = "--test component_cli terminal_cli_reaches_working_socket_and_prints_typed_reply -- --exact";
             }
           );
           meta-terminal-cli-reaches-policy-socket = context.craneLib.cargoTest (
             context.commonArgs
             // {
               inherit (context) cargoArtifacts;
-              cargoTestExtraArgs = "--features nota-text --test component_cli meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply -- --exact";
+              cargoTestExtraArgs = "--test component_cli meta_terminal_cli_reaches_policy_socket_and_prints_typed_reply -- --exact";
             }
           );
         }

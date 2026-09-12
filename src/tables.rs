@@ -46,13 +46,19 @@ impl StoreLocation {
     }
 
     pub fn from_environment() -> Self {
-        match std::env::var_os("TERMINAL_STORE") {
-            Some(path) => Self::new(path),
-            None => match std::env::var_os("PERSONA_STATE_PATH") {
-                Some(path) => Self::new(path),
-                None => Self::new("/tmp/terminal.sema"),
-            },
-        }
+        Self::from_process_environment().unwrap_or_else(Self::default_path)
+    }
+
+    /// The store the spawn envelope names, if it names one.
+    pub fn from_process_environment() -> Option<Self> {
+        std::env::var_os("TERMINAL_STORE")
+            .or_else(|| std::env::var_os("PERSONA_STATE_PATH"))
+            .map(Self::new)
+    }
+
+    /// Where the store lives when nothing names it.
+    pub fn default_path() -> Self {
+        Self::new("/tmp/terminal.sema")
     }
 
     pub fn as_path(&self) -> &Path {

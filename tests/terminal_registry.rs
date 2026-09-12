@@ -2,16 +2,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use signal_terminal::{
-    Response, TerminalOperationKind, TerminalReadyReply,
-};
+use signal_terminal::{Response, TerminalOperationKind, TerminalReadyReply};
+use terminal::Error;
 use terminal::records::{
     TerminalDeliveryAttemptObservation, TerminalDeliveryAttemptState, TerminalEventObservation,
     TerminalSessionArchiveObservation, TerminalSessionArchiveState,
     TerminalSessionHealthObservation, TerminalSessionObservation, TerminalSessionState,
     TerminalViewerAttachmentObservation, TerminalViewerAttachmentState,
 };
-use terminal::Error;
 use terminal::registry::SessionRegistration;
 use terminal::registry::SessionResolveRequest;
 use terminal::tables::{StoreLocation, TerminalTables};
@@ -95,14 +93,8 @@ fn terminal_sessions_are_component_sema_records() {
         .expect("session is readable")
         .expect("session exists");
     assert_eq!(stored.terminal(), &terminal);
-    assert_eq!(
-        stored.control_socket_path(),
-        "/tmp/operator.control.sock"
-    );
-    assert_eq!(
-        stored.data_socket_path(),
-        "/tmp/operator.data.sock"
-    );
+    assert_eq!(stored.control_socket_path(), "/tmp/operator.control.sock");
+    assert_eq!(stored.data_socket_path(), "/tmp/operator.data.sock");
     assert_eq!(stored.state(), TerminalSessionState::Ready);
 }
 
@@ -123,14 +115,8 @@ fn terminal_daemon_registration_writes_named_session_with_typed_control_and_data
     let rows = fixture.tables().sessions().expect("sessions are readable");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].terminal(), &terminal);
-    assert_eq!(
-        rows[0].control_socket_path(),
-        "/tmp/assistant.control.sock"
-    );
-    assert_eq!(
-        rows[0].data_socket_path(),
-        "/tmp/assistant.data.sock"
-    );
+    assert_eq!(rows[0].control_socket_path(), "/tmp/assistant.control.sock");
+    assert_eq!(rows[0].data_socket_path(), "/tmp/assistant.data.sock");
 
     let health = fixture
         .tables()
@@ -145,8 +131,7 @@ fn terminal_daemon_registration_writes_named_session_with_typed_control_and_data
 #[test]
 fn terminal_resolve_reports_missing_session() {
     let fixture = RegistryFixture::new("missing-session");
-    let request =
-        SessionResolveRequest::new(fixture.store(), "missing".to_string());
+    let request = SessionResolveRequest::new(fixture.store(), "missing".to_string());
 
     let error = request
         .run(Vec::new())

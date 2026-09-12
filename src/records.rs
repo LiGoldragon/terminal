@@ -13,7 +13,9 @@
 //! receives datom-codec derives alone. No `Datomic` implementation is
 //! hand-written here: these types are not ethos-declared at all.
 
-use signal_terminal::{Response, TerminalGeneration, TerminalName, TerminalOperationKind, WirePath};
+use signal_terminal::{
+    Response, TerminalGeneration, TerminalName, TerminalOperationKind, WirePath,
+};
 
 /// Monotonic position of an observation within its table.
 pub type TerminalObservationSequence = i64;

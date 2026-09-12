@@ -28,16 +28,16 @@ prompt-pattern lifecycle, and viewer-adapter launch policy.
 - `terminal-daemon` is the production component daemon. It binds a
   communication socket and a supervision socket, owns component Sema, and
   owns terminal session actors built on the `terminal_cell` library.
-- Daemon startup takes exactly one signal-encoded/rkyv
-  `TerminalDaemonConfiguration` file. Inline NOTA and `.nota`
-  configuration files are CLI/deploy-tool material and are rejected before
-  the daemon opens its runtime.
+- Daemon startup takes exactly one binary rkyv `TerminalDaemonConfiguration`
+  file. Inline text names no file and is refused while the argument is read;
+  a file that is not a configuration archive is refused at decode. Both
+  happen before the daemon opens its runtime.
 - The terminal meta surface is part of the same component owner. It is not
   a separate daemon; it is the authority-limited request vocabulary used by
   the orchestrate/harness chain to create or retire terminal sessions.
 - `terminal` and `meta-terminal` are the component CLIs. They each accept
-  exactly one NOTA argument or file and talk to the ordinary and meta Signal
-  sockets respectively. Keep local PTY helpers explicitly named
+  exactly one inline Datom value or file and talk to the ordinary and meta
+  Signal sockets respectively. Keep local PTY helpers explicitly named
   (`terminal-viewer`, `terminal-send`, `terminal-capture`, etc.).
 - `terminal-supervisor` now uses the generated async task-backed daemon process
   shell for ordinary and meta listeners while still routing to the existing

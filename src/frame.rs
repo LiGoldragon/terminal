@@ -84,7 +84,9 @@ pub async fn write_frame_bytes_async(
             got: format!("frame length {} exceeds {MAXIMUM_FRAME_BYTES}", bytes.len()),
         });
     }
-    writer.write_all(&(bytes.len() as u32).to_be_bytes()).await?;
+    writer
+        .write_all(&(bytes.len() as u32).to_be_bytes())
+        .await?;
     writer.write_all(bytes).await?;
     writer.flush().await?;
     Ok(())
@@ -116,7 +118,10 @@ pub mod terminal {
     }
 
     pub fn write_response(writer: &mut impl std::io::Write, response: &Response) -> Result<()> {
-        write_frame_bytes(writer, response.signalize().map_err(archive_failure)?.bytes())
+        write_frame_bytes(
+            writer,
+            response.signalize().map_err(archive_failure)?.bytes(),
+        )
     }
 
     pub async fn read_query_async(
@@ -146,8 +151,11 @@ pub mod terminal {
         writer: &mut (impl tokio::io::AsyncWrite + Unpin),
         response: &Response,
     ) -> Result<()> {
-        write_frame_bytes_async(writer, response.signalize().map_err(archive_failure)?.bytes())
-            .await
+        write_frame_bytes_async(
+            writer,
+            response.signalize().map_err(archive_failure)?.bytes(),
+        )
+        .await
     }
 
     fn restore_failure(error: rkyv::rancor::Error) -> Error {
@@ -189,7 +197,10 @@ pub mod meta {
     }
 
     pub fn write_response(writer: &mut impl std::io::Write, response: &Response) -> Result<()> {
-        write_frame_bytes(writer, response.signalize().map_err(archive_failure)?.bytes())
+        write_frame_bytes(
+            writer,
+            response.signalize().map_err(archive_failure)?.bytes(),
+        )
     }
 
     pub async fn read_query_async(
@@ -204,8 +215,11 @@ pub mod meta {
         writer: &mut (impl tokio::io::AsyncWrite + Unpin),
         response: &Response,
     ) -> Result<()> {
-        write_frame_bytes_async(writer, response.signalize().map_err(archive_failure)?.bytes())
-            .await
+        write_frame_bytes_async(
+            writer,
+            response.signalize().map_err(archive_failure)?.bytes(),
+        )
+        .await
     }
 
     fn restore_failure(error: rkyv::rancor::Error) -> Error {
@@ -245,7 +259,10 @@ pub mod persona {
     }
 
     pub fn write_response(writer: &mut impl std::io::Write, response: &Response) -> Result<()> {
-        write_frame_bytes(writer, response.signalize().map_err(archive_failure)?.bytes())
+        write_frame_bytes(
+            writer,
+            response.signalize().map_err(archive_failure)?.bytes(),
+        )
     }
 
     fn restore_failure(error: rkyv::rancor::Error) -> Error {

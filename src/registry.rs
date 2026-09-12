@@ -164,7 +164,7 @@ impl SessionRegistration {
         tables.put_session_health(&TerminalSessionHealthObservation::new(
             self.session.terminal().clone(),
             self.session.state(),
-            self.session.generation().clone(),
+            self.session.generation(),
         ))
     }
 }

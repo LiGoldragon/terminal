@@ -13,12 +13,8 @@ use std::process::Command;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use meta_signal_terminal::{
-    Query as MetaQuery, Response as MetaResponse, SessionRetired,
-};
-use signal_terminal::{
-    Query, Response, TerminalConnectionRequest, TerminalReadyReply,
-};
+use meta_signal_terminal::{Query as MetaQuery, Response as MetaResponse, SessionRetired};
+use signal_terminal::{Query, Response, TerminalConnectionRequest, TerminalReadyReply};
 use terminal::{datom_text, frame};
 
 #[derive(Debug)]

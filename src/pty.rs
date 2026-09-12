@@ -844,11 +844,7 @@ impl ViewerArguments {
                 "--control-socket" => control_socket = arguments.next().map(PathBuf::from),
                 "--data-socket" => data_socket = arguments.next().map(PathBuf::from),
                 "--store" => store = arguments.next().map(StoreLocation::new),
-                "--terminal" | "--name" => {
-                    terminal = arguments
-                        .next()
-                        .map(|value| value)
-                }
+                "--terminal" | "--name" => terminal = arguments.next(),
                 "--once" => mode = ViewMode::Snapshot,
                 "--ready-file" => ready_file = arguments.next().map(PathBuf::from),
                 _ => {}
@@ -885,8 +881,7 @@ impl ViewerArguments {
             }
             return Ok(ViewerTarget::RegisteredSession(ViewerSessionLookup::new(
                 self.store.unwrap_or_else(StoreLocation::from_environment),
-                self.terminal
-                    .unwrap_or_else(|| "default".to_string()),
+                self.terminal.unwrap_or_else(|| "default".to_string()),
             )));
         }
 

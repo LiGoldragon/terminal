@@ -83,13 +83,15 @@ impl TerminalSignalControl {
                     },
                 ))
             }
-            terminal_signal::Query::TerminalDetachment(detachment) => Ok(
-                terminal_signal::Response::TerminalDetached(terminal_signal::TerminalDetachedReply {
-                    terminal: detachment.terminal,
-                    generation: GENERATION,
-                    terminal_detachment_reason: detachment.terminal_detachment_reason,
-                }),
-            ),
+            terminal_signal::Query::TerminalDetachment(detachment) => {
+                Ok(terminal_signal::Response::TerminalDetached(
+                    terminal_signal::TerminalDetachedReply {
+                        terminal: detachment.terminal,
+                        generation: GENERATION,
+                        terminal_detachment_reason: detachment.terminal_detachment_reason,
+                    },
+                ))
+            }
             terminal_signal::Query::TerminalCapture(capture) => {
                 let snapshot = self.snapshot().await?;
                 Ok(terminal_signal::Response::TerminalCaptured(
@@ -119,14 +121,14 @@ impl TerminalSignalControl {
                     },
                 ))
             }
-            terminal_signal::Query::ListPromptPatterns(list) => Ok(
-                terminal_signal::Response::PromptPatternList(
+            terminal_signal::Query::ListPromptPatterns(list) => {
+                Ok(terminal_signal::Response::PromptPatternList(
                     terminal_signal::PromptPatternListReply {
                         terminal: list.terminal,
                         entries: self.prompt_pattern_entries(),
                     },
-                ),
-            ),
+                ))
+            }
             terminal_signal::Query::AcquireInputGate(acquire) => {
                 self.acquire_input_gate(acquire).await
             }
@@ -140,8 +142,7 @@ impl TerminalSignalControl {
             terminal_signal::Query::TerminalWorkerLifecycleRetraction(token) => {
                 Ok(self.close_worker_lifecycle_subscription(token))
             }
-            terminal_signal::Query::ListSessions(_)
-            | terminal_signal::Query::ResolveSession(_) => {
+            terminal_signal::Query::ListSessions(_) | terminal_signal::Query::ResolveSession(_) => {
                 Err(TerminalSignalControlFailure::new(
                     "session registry queries belong to the consolidated terminal daemon",
                 ))
@@ -236,8 +237,10 @@ impl TerminalSignalControl {
         match self.input_port.close_human_input() {
             Ok(lease) => {
                 let signal_lease = Self::signal_lease(lease);
-                self.signal_leases
-                    .insert(signal_lease.input_gate_lease_identifier, prompt_state.clone());
+                self.signal_leases.insert(
+                    signal_lease.input_gate_lease_identifier,
+                    prompt_state.clone(),
+                );
                 Ok(terminal_signal::Response::GateAcquired(
                     terminal_signal::GateAcquiredReply {
                         terminal: acquire.terminal,

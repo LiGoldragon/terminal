@@ -155,9 +155,7 @@ fn terminal_contract_refuses_registry_queries() {
     let mut binding = binding();
     assert!(
         binding
-            .handle_query(Query::ListSessions(
-                signal_terminal::ListSessionsRequest {}
-            ))
+            .handle_query(Query::ListSessions(signal_terminal::ListSessionsRequest {}))
             .is_err(),
         "the registry belongs to the consolidated daemon, not one terminal's transport"
     );
