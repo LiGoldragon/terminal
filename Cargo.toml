@@ -1,6 +1,6 @@
 [package]
 name         = "terminal"
-version      = "0.3.0"
+version      = "0.3.1"
 edition      = "2024"
 rust-version = "1.89"
 license      = "MIT OR Apache-2.0"
@@ -62,16 +62,16 @@ path = "src/bin/terminal-supervisor.rs"
 
 [dependencies]
 crossterm            = "0.28"
-datom-codec          = { git = "https://github.com/LiGoldragon/datom-codec", rev = "627db67f2655efd9f786864009955005fd8ab2ad" }
+datom-codec          = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927" }
 kameo                = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01", default-features = false, features = ["tracing"] }
-meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal.git", rev = "a9b18ee853a449709fd908bb4c2d16c8f7fd15ff", features = ["datom"] }
-protos               = { git = "https://github.com/LiGoldragon/protos", rev = "171b21f65337983ab624b7b906397a4f1f92c5a3" }
+meta-signal-terminal = { git = "https://github.com/LiGoldragon/meta-signal-terminal", rev = "40219a6dec2a8e5dbe4a3720226bf563cea6c36b", features = ["datom"] }
+protos               = { git = "https://github.com/LiGoldragon/protos", rev = "1febca7836bf8d5f5973a302fdd50aa9c84c159b" }
 regex                = "1"
 rkyv                 = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 sema-engine          = { git = "https://github.com/LiGoldragon/sema-engine.git", rev = "27e814a721439af67721c530d48b4d2101141f74" }
 signal-hook          = "0.3"
 signal-persona       = { git = "https://github.com/LiGoldragon/signal-persona.git", rev = "48118557368f26b7292f6b0fb2f98df5cec29fc5", features = ["datom"] }
-signal-terminal      = { git = "https://github.com/LiGoldragon/signal-terminal.git", rev = "bb6963650cdd507c25b3650d85fd3bfc232f9a07", features = ["datom"] }
+signal-terminal      = { git = "https://github.com/LiGoldragon/signal-terminal", rev = "a3e4f96bf2eb2095e377a73a31ee927ef3e6b44f", features = ["datom"] }
 terminal-cell        = { git = "https://github.com/LiGoldragon/terminal-cell.git", rev = "bd1defd9295d21104d6def5d0a2519eb1bbb558e" }
 thiserror            = "2"
 tokio                = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }

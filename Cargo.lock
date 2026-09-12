@@ -168,14 +168,34 @@ name = "datom-codec"
 version = "0.26.3"
 source = "git+https://github.com/LiGoldragon/datom-codec?rev=627db67f2655efd9f786864009955005fd8ab2ad#627db67f2655efd9f786864009955005fd8ab2ad"
 dependencies = [
- "datom-codec-derive",
+ "datom-codec-derive 0.26.0",
  "protos 0.30.1",
+]
+
+[[package]]
+name = "datom-codec"
+version = "0.31.0"
+source = "git+https://github.com/LiGoldragon/datom-codec?rev=09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927#09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927"
+dependencies = [
+ "datom-codec-derive 0.31.0",
+ "protos 0.31.0",
+ "rkyv",
 ]
 
 [[package]]
 name = "datom-codec-derive"
 version = "0.26.0"
 source = "git+https://github.com/LiGoldragon/datom-codec?rev=627db67f2655efd9f786864009955005fd8ab2ad#627db67f2655efd9f786864009955005fd8ab2ad"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "datom-codec-derive"
+version = "0.31.0"
+source = "git+https://github.com/LiGoldragon/datom-codec?rev=09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927#09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -240,10 +260,24 @@ name = "ethos-zero"
 version = "8.0.1"
 source = "git+https://github.com/LiGoldragon/ethos-zero?rev=de3d9928b156f2e1a92d060b7817af201abfdbef#de3d9928b156f2e1a92d060b7817af201abfdbef"
 dependencies = [
- "datom-codec",
+ "datom-codec 0.26.3",
  "prettyplease 0.3.0",
  "proc-macro2",
  "protos 0.30.1",
+ "quote",
+ "rkyv",
+ "syn 3.0.5",
+]
+
+[[package]]
+name = "ethos-zero"
+version = "10.0.0"
+source = "git+https://github.com/LiGoldragon/ethos-zero?rev=4bf73cae8d4f5a2072c76a11cd2f00aa3fe9f8e3#4bf73cae8d4f5a2072c76a11cd2f00aa3fe9f8e3"
+dependencies = [
+ "datom-codec 0.31.0",
+ "prettyplease 0.3.0",
+ "proc-macro2",
+ "protos 0.31.0",
  "quote",
  "rkyv",
  "syn 3.0.5",
@@ -496,14 +530,14 @@ dependencies = [
 
 [[package]]
 name = "meta-signal-terminal"
-version = "2.0.1"
-source = "git+https://github.com/LiGoldragon/meta-signal-terminal.git?rev=a9b18ee853a449709fd908bb4c2d16c8f7fd15ff#a9b18ee853a449709fd908bb4c2d16c8f7fd15ff"
+version = "4.0.0"
+source = "git+https://github.com/LiGoldragon/meta-signal-terminal?rev=40219a6dec2a8e5dbe4a3720226bf563cea6c36b#40219a6dec2a8e5dbe4a3720226bf563cea6c36b"
 dependencies = [
- "datom-codec",
- "ethos-zero",
- "protos 0.30.1",
+ "datom-codec 0.31.0",
+ "ethos-zero 10.0.0",
+ "protos 0.31.0",
  "rkyv",
- "signal-terminal",
+ "signal-terminal 4.0.0",
 ]
 
 [[package]]
@@ -674,6 +708,11 @@ dependencies = [
 name = "protos"
 version = "0.30.1"
 source = "git+https://github.com/LiGoldragon/protos?rev=171b21f65337983ab624b7b906397a4f1f92c5a3#171b21f65337983ab624b7b906397a4f1f92c5a3"
+
+[[package]]
+name = "protos"
+version = "0.31.0"
+source = "git+https://github.com/LiGoldragon/protos?rev=1febca7836bf8d5f5973a302fdd50aa9c84c159b#1febca7836bf8d5f5973a302fdd50aa9c84c159b"
 
 [[package]]
 name = "ptr_meta"
@@ -1075,8 +1114,8 @@ name = "signal-persona"
 version = "2.0.1"
 source = "git+https://github.com/LiGoldragon/signal-persona.git?rev=48118557368f26b7292f6b0fb2f98df5cec29fc5#48118557368f26b7292f6b0fb2f98df5cec29fc5"
 dependencies = [
- "datom-codec",
- "ethos-zero",
+ "datom-codec 0.26.3",
+ "ethos-zero 8.0.1",
  "protos 0.30.1",
  "rkyv",
 ]
@@ -1095,9 +1134,20 @@ name = "signal-terminal"
 version = "2.0.1"
 source = "git+https://github.com/LiGoldragon/signal-terminal.git?rev=bb6963650cdd507c25b3650d85fd3bfc232f9a07#bb6963650cdd507c25b3650d85fd3bfc232f9a07"
 dependencies = [
- "datom-codec",
- "ethos-zero",
+ "datom-codec 0.26.3",
+ "ethos-zero 8.0.1",
  "protos 0.30.1",
+ "rkyv",
+]
+
+[[package]]
+name = "signal-terminal"
+version = "4.0.0"
+source = "git+https://github.com/LiGoldragon/signal-terminal?rev=a3e4f96bf2eb2095e377a73a31ee927ef3e6b44f#a3e4f96bf2eb2095e377a73a31ee927ef3e6b44f"
+dependencies = [
+ "datom-codec 0.31.0",
+ "ethos-zero 10.0.0",
+ "protos 0.31.0",
  "rkyv",
 ]
 
@@ -1165,20 +1215,20 @@ dependencies = [
 
 [[package]]
 name = "terminal"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "crossterm",
- "datom-codec",
+ "datom-codec 0.31.0",
  "kameo",
  "meta-signal-terminal",
- "protos 0.30.1",
+ "protos 0.31.0",
  "regex",
  "rkyv",
  "schema-rust",
  "sema-engine",
  "signal-hook",
  "signal-persona",
- "signal-terminal",
+ "signal-terminal 4.0.0",
  "terminal-cell",
  "thiserror 2.0.18",
  "tokio",
@@ -1192,7 +1242,7 @@ version = "2.0.0"
 source = "git+https://github.com/LiGoldragon/terminal-cell.git?rev=bd1defd9295d21104d6def5d0a2519eb1bbb558e#bd1defd9295d21104d6def5d0a2519eb1bbb558e"
 dependencies = [
  "crossterm",
- "datom-codec",
+ "datom-codec 0.26.3",
  "kameo",
  "portable-pty",
  "protos 0.30.1",
@@ -1200,7 +1250,7 @@ dependencies = [
  "rkyv",
  "schema-rust",
  "signal-hook",
- "signal-terminal",
+ "signal-terminal 2.0.1",
  "thiserror 2.0.18",
  "tokio",
  "triad-runtime 0.8.0 (git+https://github.com/LiGoldragon/triad-runtime.git?rev=e44c07dbf31497af95eb461826bb9502115fbcfe)",
