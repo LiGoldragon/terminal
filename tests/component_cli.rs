@@ -137,3 +137,37 @@ fn read_terminal_query(stream: &mut UnixStream) -> Query {
 fn read_meta_query(stream: &mut UnixStream) -> MetaQuery {
     frame::meta::read_query(stream).expect("meta-terminal cli sends one Signal query frame")
 }
+
+/// The Datom text the CLIs speak, pinned to its expected spelling.
+///
+/// The text form is these CLIs' product, so it is asserted directly. A
+/// single-field struct's Datom form is `Name.{ value }`, not `Name.value`,
+/// and a variant carrying a bare alias is `Name.value` — an ungated
+/// canonical text is how that distinction gets written down wrong.
+#[test]
+fn component_cli_datom_text_has_its_expected_shape() {
+    let struct_bearing =
+        datom_text::textualize(&Query::TerminalConnection(TerminalConnectionRequest {
+            terminal: "operator".to_string(),
+        }));
+    assert_eq!(struct_bearing, "TerminalConnection.{ operator }");
+
+    let alias_bearing = datom_text::textualize(&MetaQuery::RetireSession("operator".to_string()));
+    assert_eq!(alias_bearing, "RetireSession.operator");
+}
+
+/// Every line of that text actualizes back into the value it came from.
+#[test]
+fn component_cli_datom_text_actualizes_back() {
+    let query = Query::TerminalConnection(TerminalConnectionRequest {
+        terminal: "operator".to_string(),
+    });
+    let restored: Query =
+        datom_text::actualize(&datom_text::textualize(&query)).expect("query text actualizes");
+    assert_eq!(restored, query);
+
+    let meta = MetaQuery::RetireSession("operator".to_string());
+    let restored: MetaQuery =
+        datom_text::actualize(&datom_text::textualize(&meta)).expect("meta text actualizes");
+    assert_eq!(restored, meta);
+}
